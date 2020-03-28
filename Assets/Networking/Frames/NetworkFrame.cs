@@ -1,6 +1,4 @@
 ﻿using System;
-using System.Collections;
-using System.Collections.Generic;
 using System.Text;
 using UnityEngine;
 
@@ -44,20 +42,39 @@ public class NetworkFrame
     {
         this.m_SenderId = m_SenderId;
     }
-
+    
+    /// <summary>
+    /// Turns the network frame into a array of bytes
+    /// </summary>
+    /// <returns>An array of bytes representing the network frame</returns>
     public byte[] ToBytes()
     {
         string content = JsonUtility.ToJson(this);
         return Encoding.ASCII.GetBytes(content);
     }
 
+    /// <summary>
+    /// Turns an array of bytes into a generic type
+    /// </summary>
+    /// <typeparam name="T">The generic type you are wanting to parse into</typeparam>
+    /// <param name="bytes">The array of bytes containing that generic type</param>
+    /// <returns>The generic type filled with the specified data</returns>
+    /// <exception cref="Exception">Thrown if the bytes did not contain the generic type</exception>
     public static T Parse<T>(byte[] bytes)
     {
         string content = Encoding.ASCII.GetString(bytes);
         T frame = JsonUtility.FromJson<T>(content);
+        if (frame == null)
+            throw new Exception($"Error reading frame from bytes, {content} is not a valid {typeof(T)}!");
         return frame;
     }
 
+    /// <summary>
+    /// Reads a network frame from an array of bytes
+    /// </summary>
+    /// <param name="bytes">An array of bytes containing a network frame</param>
+    /// <returns>A network frames</returns>
+    /// <exception cref="Exception">Thrown if the bytes did not contain a frame</exception>
     public static NetworkFrame ReadFromBytes(byte[] bytes)
     {
         string content = Encoding.ASCII.GetString(bytes);

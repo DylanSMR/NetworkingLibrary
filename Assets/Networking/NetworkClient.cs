@@ -1,10 +1,9 @@
 ﻿using System.Collections;
-using System.Collections.Generic;
 using System.Diagnostics;
-using System.Net;
 using System.Net.Sockets;
 using System.Threading.Tasks;
 using UnityEngine;
+
 using Debug = UnityEngine.Debug; // Hmmm
 
 /// <summary>
@@ -39,13 +38,20 @@ public class NetworkClient : MonoBehaviour
         StartCoroutine(ConnectToServer(address, port));
     }
 
+    /// <summary>
+    /// Runs a loop to ensure connection to the game server. 
+    /// After a few tries it will eventually fail and log an error
+    /// TODO: Call a function or something if it fails to connect
+    /// </summary>
+    /// <param name="address">The address of the game server/proxy</param>
+    /// <param name="port">The port of the game server/proxy</param>
     private IEnumerator ConnectToServer(string address, int port)
     {
         for(; ;)
         {
             if(m_ConnectionTries == 5)
             {
-                Debug.Log("[NetworkClient] Failed to connect to the server.");
+                Debug.LogError("[NetworkClient] Failed to connect to the server.");
                 break;
             }
 
@@ -64,7 +70,7 @@ public class NetworkClient : MonoBehaviour
                 SendPing(); // Establish some basic communication with the server to know we are connected
             } catch
             {
-                // Errors are thrown from generally not connected UdpClients
+                // Errors are thrown from generally not connected UdpClients trying to send bytes (frames)
             }
 
             yield return new WaitForSeconds(2.5f); // Every 2 and a half seconds we are going to try and connect again! Yay :/
@@ -83,9 +89,14 @@ public class NetworkClient : MonoBehaviour
     /// Sends a ping request to the server to calculate our ping
     /// Use 
     /// </summary>
-    private void SendPing()
+    private void SendPing(bool checkingConnection = false)
     {
         NetworkFrame pingFrame = new NetworkFrame(NetworkFrame.NetworkFrameType.Ping, SystemInfo.deviceUniqueIdentifier);
+        if(checkingConnection == false)
+        {
+            m_Stopwatch = new Stopwatch();
+            m_Stopwatch.Start();
+        }
         SendFrame(pingFrame);
     }
 
@@ -95,7 +106,6 @@ public class NetworkClient : MonoBehaviour
     private async Task OnReceiveFrame()
     {
         UdpReceiveResult result = await m_Client.ReceiveAsync();
-        IPEndPoint remote = result.RemoteEndPoint;
         NetworkFrame frame = NetworkFrame.ReadFromBytes(result.Buffer);
 
         switch(frame.m_Type)
@@ -104,14 +114,15 @@ public class NetworkClient : MonoBehaviour
                 {
                     
                 } break;
-            case NetworkFrame.NetworkFrameType.Ping:
+            case NetworkFrame.NetworkFrameType.Ping: 
                 {
-                    m_Connected = true;
+                    m_Connected = true; // Tells us we have definitely received a request from the server
                     if(m_Stopwatch != null)
                     {
                         m_Stopwatch.Stop();
                         m_LastPing = m_Stopwatch.ElapsedMilliseconds;
                         m_Stopwatch = null;
+                        Debug.Log($"[NetworkClient] Calculated Ping | {m_LastPing}ms");
                     }
                 } break;
             case NetworkFrame.NetworkFrameType.RPC:
