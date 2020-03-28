@@ -92,6 +92,7 @@ public class NetworkFrame
     {
         Handshake,
         Ping,
+        Authentication,
         RPC
     }
 }

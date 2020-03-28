@@ -39,7 +39,7 @@ public class NetworkManager : MonoBehaviour
     {
         if(Instance != null)
         {
-            Debug.LogWarning("[NetworkManager] A new network manager was created, yet one already existed.");
+            Debug.LogWarning("[NetworkManager] A new network manager was created, yet one already exists.");
             return; // We want to use the already existing network manager
         }
         Instance = this;
@@ -52,6 +52,8 @@ public class NetworkManager : MonoBehaviour
             m_Server = gameObject.AddComponent<NetworkServer>(); // Create our server
         if (m_NetworkType == ENetworkType.Client || m_NetworkType == ENetworkType.Mixed)
             m_Client = gameObject.AddComponent<NetworkClient>();
+
+        Connect();
     }
 
     /// <summary>
@@ -86,7 +88,7 @@ public class NetworkManager : MonoBehaviour
     /// <param name="password">The password required for the server. Leave blank if no password is required</param>
     public void Connect(string serverAddress, int serverPort, string password = "")
     {
-
+        m_Client.Connect(serverAddress, serverPort, password);
     }
 
     public enum ENetworkType
