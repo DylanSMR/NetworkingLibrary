@@ -101,16 +101,6 @@ public class Player : NetworkBehaviour
 
         switch (rpc.m_Type)
         {
-            case NetworkRPCType.RPC_CUSTOM_TRANSFORM:
-                {
-                    if (NetworkManager.Instance.m_NetworkType == NetworkManager.ENetworkType.Mixed)
-                        break; // We are sort of server, so we have most up to date value
-
-                    NetworkTransformRPC transformRPC = NetworkRPC.Parse<NetworkTransformRPC>(content);
-                    transform.position = transformRPC.m_Position;
-                    transform.eulerAngles = transformRPC.m_Rotation;
-                    transform.localScale = transformRPC.m_Scale;
-                } break;
             case NetworkRPCType.RPC_CUSTOM_PLAYER:
                 {
                     if (NetworkManager.Instance.m_NetworkType == NetworkManager.ENetworkType.Mixed)

@@ -281,6 +281,16 @@ public class NetworkClient : MonoBehaviour
                     if (gameObject != null)
                         Destroy(gameObject);
                 } break;
+            case NetworkRPCType.RPC_LIB_TRANSFORM:
+                {
+                    if (NetworkManager.Instance.m_NetworkType == NetworkManager.ENetworkType.Mixed)
+                        break; // We are sort of server, so we have most up to date value
+
+                    NetworkTransformRPC transformRPC = NetworkRPC.Parse<NetworkTransformRPC>(content);
+                    transform.position = transformRPC.m_Position;
+                    transform.eulerAngles = transformRPC.m_Rotation;
+                    transform.localScale = transformRPC.m_Scale;
+                } break;
             default: // This can be handled on behaviour/object
                 {
                     GameObject obj = NetworkManager.Instance.GetNetworkedObject(rpc.m_NetworkId);

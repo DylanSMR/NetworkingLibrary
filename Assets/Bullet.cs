@@ -81,30 +81,4 @@ public class Bullet : NetworkBehaviour
         NetworkServer.Instance.SendRPCAll(rpc);
         NetworkServer.Instance.DestroyObject(GetComponent<NetworkIdentity>().m_NetworkId);
     }
-
-    /// <summary>
-    /// An optional way to receive any extra RPC commands.
-    /// Can be used to update things like health, active gun, animation (maybe done by library later), etc
-    /// </summary>
-    /// <param name="content">The content of the rpc we received. See example below to understand more</param>
-    public override void OnRPCCommand(string content)
-    {
-        NetworkRPC rpc = NetworkRPC.FromString(content);
-        base.OnRPCCommand(content);
-
-        switch (rpc.m_Type)
-        {
-            case NetworkRPCType.RPC_CUSTOM_TRANSFORM:
-                {
-                    if (NetworkManager.Instance.m_NetworkType == NetworkManager.ENetworkType.Mixed)
-                        break;
-
-                    NetworkTransformRPC transformRPC = NetworkRPC.Parse<NetworkTransformRPC>(content);
-                    transform.position = transformRPC.m_Position;
-                    transform.eulerAngles = transformRPC.m_Rotation;
-                    transform.localScale = transformRPC.m_Scale;
-                }
-                break;
-        }
-    }
 }

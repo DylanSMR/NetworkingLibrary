@@ -285,7 +285,7 @@ public class NetworkServer : MonoBehaviour
                         SendRPCAll(rpc);
                     }
                 } break;
-            case NetworkRPCType.RPC_CUSTOM_TRANSFORM:
+            case NetworkRPCType.RPC_LIB_TRANSFORM:
                 {
                     NetworkTransformRPC transformRPC = NetworkRPC.Parse<NetworkTransformRPC>(command);
 

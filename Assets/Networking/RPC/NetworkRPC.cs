@@ -107,7 +107,7 @@ public class NetworkTransformRPC : NetworkRPC
     public Vector3 m_Rotation;
     public Vector3 m_Scale;
 
-    public NetworkTransformRPC(Transform transform, int id) : base(id, NetworkRPCType.RPC_CUSTOM_TRANSFORM)
+    public NetworkTransformRPC(Transform transform, int id) : base(id, NetworkRPCType.RPC_LIB_TRANSFORM)
     {
         m_Position = MathHelpers.RoundVector3(transform.position);
         m_Rotation = MathHelpers.RoundVector3(transform.eulerAngles);
@@ -134,7 +134,7 @@ public enum NetworkRPCType
     RPC_LIB_SPAWN,
     RPC_LIB_DESTROY,
     RPC_LIB_OBJECT_NETAUTH,
+    RPC_LIB_TRANSFORM,
 
-    RPC_CUSTOM_TRANSFORM,
     RPC_CUSTOM_PLAYER
 }
