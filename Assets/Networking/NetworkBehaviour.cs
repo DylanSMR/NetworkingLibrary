@@ -18,4 +18,9 @@ public class NetworkBehaviour : MonoBehaviour
     {
         //NetworkRPC rpc = NetworkRPC.FromString(content);
     }
+
+    public virtual void OnAuthorityChanged(bool status)
+    {
+
+    }
 }

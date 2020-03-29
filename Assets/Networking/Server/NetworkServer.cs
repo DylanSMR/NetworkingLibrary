@@ -82,7 +82,6 @@ public class NetworkServer : MonoBehaviour
                     if (!IsUserAuthorized(frame.m_SenderId)) // Must be authorized to use this frame
                         break;
                     NetworkHandshakeFrame handshake = NetworkFrame.Parse<NetworkHandshakeFrame>(result.Buffer);
-                    Debug.Log($"[NetworkServer] Received handshake info: " + handshake.m_DisplayName);
 
                     NetworkManager.Instance.AddPlayer(handshake.m_SenderId, new NetworkPlayer()
                     {
@@ -277,20 +276,47 @@ public class NetworkServer : MonoBehaviour
                     NetworkTransformRPC transformRPC = NetworkRPC.Parse<NetworkTransformRPC>(command);
 
                     GameObject obj = NetworkManager.Instance.GetNetworkedObject(transformRPC.m_NetworkId);
-                    if (obj != null)
+                    if(PlayerHasAuthority(obj, player))
                     {
-                        NetworkObjectServerInfo info = obj.GetComponent<NetworkObjectServerInfo>();                 
-                        if (info != null)
-                        {
-                            if(info.HasAuthority(player))
-                            {
-                                info.UpdateRPC(transformRPC);
-                                SendRPCAll(transformRPC); // Probably should add a exclude to this so we dont send it to ourselves? Idk
-                            }
-                        }
+                        UpdateRPC(obj, transformRPC);
+                        SendRPCAll(transformRPC); // Probably should add a exclude to this so we dont send it to ourselves? Idk
+                    }
+                } break;
+            case NetworkRPCType.RPC_CUSTOM_PLAYER:
+                {
+                    NetworkPlayerRPC playerRPC = NetworkRPC.Parse<NetworkPlayerRPC>(command);
+
+                    GameObject obj = NetworkManager.Instance.GetNetworkedObject(playerRPC.m_NetworkId);
+                    if (PlayerHasAuthority(obj, player))
+                    {
+                        UpdateRPC(obj, playerRPC);
+                        SendRPCAll(playerRPC); // Probably should add a exclude to this so we dont send it to ourselves? Idk
                     }
                 } break;
         }
+    }
+
+    private void UpdateRPC(GameObject obj, NetworkRPC rpc)
+    {
+        NetworkObjectServerInfo info = obj.GetComponent<NetworkObjectServerInfo>();
+        if (info != null)
+        {
+            info.UpdateRPC(rpc);
+        }
+    }
+
+    private bool PlayerHasAuthority(GameObject obj, NetworkPlayer player)
+    {
+        if (obj != null)
+        {
+            NetworkObjectServerInfo info = obj.GetComponent<NetworkObjectServerInfo>();
+            if (info != null)
+            {
+                return info.HasAuthority(player);
+            }
+        }
+
+        return false;
     }
 
     private void SendRPCAll(NetworkRPC rpc)

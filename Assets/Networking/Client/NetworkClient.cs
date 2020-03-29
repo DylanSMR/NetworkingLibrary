@@ -154,7 +154,6 @@ public class NetworkClient : MonoBehaviour
                         m_Stopwatch.Stop();
                         m_LastPing = m_Stopwatch.ElapsedMilliseconds;
                         m_Stopwatch = null;
-                        Debug.Log($"[NetworkClient] Calculated Ping | {m_LastPing}ms");
                     }
                 } break;
             case NetworkFrame.NetworkFrameType.Authentication:
@@ -167,7 +166,7 @@ public class NetworkClient : MonoBehaviour
                         Debug.Log("[NetworkClient] Connected to server.");
 
                         SendHandshake();
-                        SendPing();
+                        StartCoroutine(PingChecker());
                     } else
                     {
                         m_Status = NetworkClientStatus.Error;
@@ -197,6 +196,13 @@ public class NetworkClient : MonoBehaviour
         }
 
         _ = OnReceiveFrame();
+    }
+
+    private IEnumerator PingChecker()
+    {
+        SendPing();
+        yield return new WaitForSeconds(2.5f);
+        StartCoroutine(PingChecker());
     }
 
     private void Update()
@@ -247,6 +253,7 @@ public class NetworkClient : MonoBehaviour
                         networkBehaviour.m_IsClient = authorizationRPC.m_LocalSet;
                         networkBehaviour.m_HasAuthority = authorizationRPC.m_LocalAuthSet;
                         networkBehaviour.m_IsServer = authorizationRPC.m_ServerSet;
+                        networkBehaviour.OnAuthorityChanged(authorizationRPC.m_LocalAuthSet);
                         gameObject.GetComponent<NetworkIdentity>().m_NetworkId = authorizationRPC.m_NetworkId;
                     }
                 } break;

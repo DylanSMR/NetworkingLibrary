@@ -2,36 +2,72 @@
 using System.Collections.Generic;
 using UnityEngine;
 
+// For movement: https://github.com/jiankaiwang/FirstPersonController/tree/master/Assets/scripts
 public class Player : NetworkBehaviour
 {
+    private NetworkIdentity m_Identity;
+    private Camera camera;
+
+    public float speed = 100.0f;
+    private float translation;
+    private float straffe;
+
+    private void Start()
+    {
+        m_Identity = GetComponent<NetworkIdentity>();
+        camera = GetComponentInChildren<Camera>();
+        camera.gameObject.SetActive(false);
+        Cursor.lockState = CursorLockMode.Locked;
+    }
+
+    public override void OnAuthorityChanged(bool status)
+    {
+        base.OnAuthorityChanged(status);
+
+        if(status)
+            camera.gameObject.SetActive(true);
+    }
+
+    private void OnGUI()
+    {
+        if(m_HasAuthority)
+        {
+            GUI.Label(new Rect(100, 100, 100, 100), $"Ping: {NetworkClient.Instance.m_LastPing}ms");
+        }
+    }
+
     private void Update()
     {
         if(m_IsClient)
         {
-            if(m_HasAuthority)
+            if (m_HasAuthority)
             {
-                if(Input.GetKeyDown(KeyCode.Space))
-                {
-                    transform.position += new Vector3(0, 0.25f, 0);
-                    NetworkTransformRPC rpc = new NetworkTransformRPC(transform, GetComponent<NetworkIdentity>().m_NetworkId);
+                translation = Input.GetAxis("Vertical") * speed * Time.deltaTime;
+                straffe = Input.GetAxis("Horizontal") * speed * Time.deltaTime;
+                transform.Translate(straffe, 0, translation);
 
+                if (Input.GetKeyDown(KeyCode.F))
+                {
+                    Color c = new Color(Random.Range(0.0f, 1.0f), Random.Range(0.0f, 1.0f), Random.Range(0.0f, 1.0f));
+                    NetworkPlayerRPC rpc = new NetworkPlayerRPC(c, m_Identity.m_NetworkId);
                     NetworkClient.Instance.SendRPC(rpc);
                 }
-                // We are client, and we have authority! Yay :)
-            } else
-            {
-                // We are client, but we dont have authority. Maybe we "guess" the position here to save server resources?
+
+                if (Input.GetKeyDown(KeyCode.Escape))
+                {
+                    Cursor.lockState = CursorLockMode.None;
+                }
             }
         } 
+    }
 
-        if(m_IsServer)
-        {
-            // We are server, we can do anything we want here. This should only be called on server
-            // Unless some is cheatsydoodling, then it doesnt matter cause they dont have authority according to the server
-            // Pff, nerds.
+    private void FixedUpdate()
+    {
+        if (!m_HasAuthority)
+            return;
 
-            // Do server stuff here though, check position, make sure not flying, no infinite ammo, etc
-        }
+        NetworkTransformRPC rpc = new NetworkTransformRPC(transform, m_Identity.m_NetworkId);
+        NetworkClient.Instance.SendRPC(rpc);
     }
 
     /// <summary>
@@ -52,6 +88,11 @@ public class Player : NetworkBehaviour
                     transform.position = transformRPC.m_Position;
                     transform.eulerAngles = transformRPC.m_Rotation;
                     transform.localScale = transformRPC.m_Scale;
+                } break;
+            case NetworkRPCType.RPC_CUSTOM_PLAYER:
+                {
+                    NetworkPlayerRPC playerRPC = NetworkRPC.Parse<NetworkPlayerRPC>(content);
+                    GetComponentInChildren<Renderer>().material.SetColor("_BaseColor", playerRPC.m_Color);
                 } break;
         }
     }

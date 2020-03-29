@@ -107,11 +107,23 @@ public class NetworkTransformRPC : NetworkRPC
     }
 }
 
+[Serializable]
+public class NetworkPlayerRPC : NetworkRPC
+{
+    public Color m_Color;
+
+    public NetworkPlayerRPC(Color color, int id) : base(id, NetworkRPCType.RPC_CUSTOM_PLAYER)
+    {
+        m_Color = color;
+    }  
+}
+
 public enum NetworkRPCType
 {
     RPC_LIB_INVALID,
     RPC_LIB_SPAWN,
     RPC_LIB_OBJECT_NETAUTH,
 
-    RPC_CUSTOM_TRANSFORM
+    RPC_CUSTOM_TRANSFORM,
+    RPC_CUSTOM_PLAYER
 }
