@@ -86,7 +86,7 @@ public class NetworkClient : MonoBehaviour
         {
             if(m_ConnectionTries == 5)
             {
-                Debug.LogError("[NetworkClient] Failed to connect to the server, ran out of tries.");
+                Debug.LogError("[Client] Failed to connect to the server, ran out of tries.");
                 m_Status = NetworkClientStatus.Error;
                 break;
             }
@@ -104,7 +104,7 @@ public class NetworkClient : MonoBehaviour
                 break;
 
             m_ConnectionTries++;
-            Debug.Log($"[NetworkClient] Attempting to connect to server [{address}:{port}][{m_ConnectionTries}/5]");
+            ELogger.Log($"Attempting to connect to server [{address}:{port}][{m_ConnectionTries}/5]", ELogger.LogType.Client);
             if (m_Client != null)
             {
                 m_Client.Close();
@@ -180,7 +180,7 @@ public class NetworkClient : MonoBehaviour
                     {
                         m_Status = NetworkClientStatus.Connected;
                         m_Address = authenticationFrame.m_TargetAddress;
-                        Debug.Log("[NetworkClient] Connected to server.");
+                        ELogger.Log("Connected to server.", ELogger.LogType.Client);
 
                         SendHandshake();
                         StartCoroutine(PingChecker());
@@ -189,19 +189,19 @@ public class NetworkClient : MonoBehaviour
                         m_Status = NetworkClientStatus.Error;
                         if(authenticationFrame.m_Response == NetworkAuthenticationFrame.NetworkAuthenticationResponse.Banned)
                         {
-                            Debug.LogWarning($"[NetworkClient] Failed to connect to server. We have been banned from that server: {authenticationFrame.m_Message}!");
+                            Debug.LogWarning($"[Client] Failed to connect to server. We have been banned from that server: {authenticationFrame.m_Message}!");
                         } else if (authenticationFrame.m_Response == NetworkAuthenticationFrame.NetworkAuthenticationResponse.LobbyFull)
                         {
-                            Debug.LogWarning($"[NetworkClient] Failed to connect to server. That server is full!");
+                            Debug.LogWarning($"[Client] Failed to connect to server. That server is full!");
                         } else if (authenticationFrame.m_Response == NetworkAuthenticationFrame.NetworkAuthenticationResponse.IncorrectPassword)
                         {
-                            Debug.LogWarning($"[NetworkClient] Failed to connect to server. The password was incorrect!");
+                            Debug.LogWarning($"[Client] Failed to connect to server. The password was incorrect!");
                         } else if (authenticationFrame.m_Response == NetworkAuthenticationFrame.NetworkAuthenticationResponse.Error)
                         {
-                            Debug.LogWarning($"[NetworkClient] Failed to connect to server. We have received an error: {authenticationFrame.m_Message}");
+                            Debug.LogWarning($"[Client] Failed to connect to server. We have received an error: {authenticationFrame.m_Message}");
                         } else
                         {
-                            Debug.LogWarning($"[NetworkClient] Failed to connect to server. Unknown reason: {authenticationFrame.m_Message}");
+                            Debug.LogWarning($"[Client] Failed to connect to server. Unknown reason: {authenticationFrame.m_Message}");
                         }
                     }
                 } break;
@@ -247,7 +247,7 @@ public class NetworkClient : MonoBehaviour
                     NetworkSpawnRPC spawnRPC = NetworkRPC.Parse<NetworkSpawnRPC>(content);
                     if(NetworkManager.Instance.GetNetworkedObject(spawnRPC.m_NetworkId) != null)
                     {
-                        Debug.LogWarning("[NetworkClient] Asked to spawn prefab we already have -> " + spawnRPC.m_NetworkId);
+                        Debug.LogWarning("[Client] Asked to spawn prefab we already have -> " + spawnRPC.m_NetworkId);
                         break;
                     }
 

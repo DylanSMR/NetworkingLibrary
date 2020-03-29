@@ -48,13 +48,13 @@ public class NetworkServer : MonoBehaviour
         {
             m_Client = new UdpClient();
             m_Client.Connect(address, port);
-            Debug.Log($"[Network Server] Connecting to proxy at {address}:{port}");
+            ELogger.Log($"Connecting to proxy at {address}:{port}", ELogger.LogType.Server);
             // Attempt connect to proxy
         }
         else
         {
             m_Client = new UdpClient(port); // Host server
-            Debug.Log($"[Network Server] Hosting server on port {port}");
+            ELogger.Log($"Hosting server on port {port}", ELogger.LogType.Server);
             _ = OnReceiveFrame();
         }
     }
@@ -309,7 +309,7 @@ public class NetworkServer : MonoBehaviour
                     {
                         if(playerRPC.m_Health != -1)
                         {
-                            Debug.Log($"[NetworkServer] {playerRPC.m_NetworkId} is trying to edit their health to {playerRPC.m_Health}!");
+                            ELogger.Log($"{playerRPC.m_NetworkId} is trying to edit their health to {playerRPC.m_Health}!", ELogger.LogType.Server);
                             break;
                         }
 

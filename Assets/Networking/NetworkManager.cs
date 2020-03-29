@@ -66,7 +66,7 @@ public class NetworkManager : MonoBehaviour
     public void AddObject(int id, GameObject obj)
     {
         if (m_GameObjects.ContainsKey(id))
-            throw new System.Exception("[NetworkManager] Error, an existing object already exists with ID: " + id);
+            throw new System.Exception("[Manager] Error, an existing object already exists with ID: " + id);
 
         m_GameObjects.Add(id, obj);
     }
@@ -168,7 +168,7 @@ public class NetworkManager : MonoBehaviour
     public int GetIndexByPrefab(GameObject obj)
     {
         if (obj == null)
-            throw new System.Exception($"[NetworkManager] The object passed into GetIndexByObject cannot be null");
+            throw new System.Exception($"[Manager] The object passed into GetIndexByObject cannot be null");
 
         int index = -2;
         for(int i = 0; i < m_NetworkPrefabs.Count; i++)
@@ -180,7 +180,7 @@ public class NetworkManager : MonoBehaviour
         if (obj == m_PlayerPrefab)
             index = -1;
         if (index == -2)
-            throw new System.Exception($"[NetworkManager] The object {obj} is not a verified network object! Please add it to the network prefab list.");
+            throw new System.Exception($"[Manager] The object {obj} is not a verified network object! Please add it to the network prefab list.");
 
         return index;
     }
@@ -196,7 +196,7 @@ public class NetworkManager : MonoBehaviour
             return m_PlayerPrefab;
 
         if (index < 0 || index > m_NetworkPrefabs.Count - 1)
-            throw new System.Exception("[NetworkManager] Index is not within the range of the prefab list");
+            throw new System.Exception("[Manager] Index is not within the range of the prefab list");
 
         return m_NetworkPrefabs[index];
     }
@@ -205,7 +205,7 @@ public class NetworkManager : MonoBehaviour
     {
         if(Instance != null)
         {
-            Debug.LogWarning("[NetworkManager] A new network manager was created, yet one already exists.");
+            Debug.LogWarning("[Manager] A new network manager was created, yet one already exists.");
             return; // We want to use the already existing network manager
         }
         Instance = this;
