@@ -9,9 +9,6 @@ public class Player : NetworkBehaviour
         NetworkRPC rpc = NetworkRPC.FromString(content);
         base.OnRPCCommand(content);
 
-        switch(rpc.m_Type)
-        {
-            
-        }
+        // Handle player based rpc stuff here
     }
 }

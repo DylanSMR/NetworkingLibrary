@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Net;
 using System.Net.Sockets;
 using System.Text;
 using System.Threading.Tasks;
@@ -46,7 +47,7 @@ public class NetworkServer : MonoBehaviour
         {
             m_Client = new UdpClient(port); // Host server
             Debug.Log($"[Network Server] Hosting server on port {port}");
-            OnReceiveFrame();
+            _ = OnReceiveFrame();
         }
     }
 
@@ -55,6 +56,7 @@ public class NetworkServer : MonoBehaviour
         UdpReceiveResult result = await m_Client.ReceiveAsync();
         NetworkFrame frame = NetworkFrame.ReadFromBytes(result.Buffer);
         m_LastFrame = frame;
+
         if (NetworkManager.Instance.m_ConnectionType == NetworkManager.ENetworkConnectionType.Server) // A proxy will automatically handle this for us
         {
             frame.m_SenderAddress = $"{result.RemoteEndPoint.Address}:{result.RemoteEndPoint.Port}"; // This is the user who sent it
@@ -70,8 +72,7 @@ public class NetworkServer : MonoBehaviour
                     NetworkHandshakeFrame handshake = NetworkFrame.Parse<NetworkHandshakeFrame>(result.Buffer);
                     Debug.Log($"[NetworkServer] Received handshake info: " + handshake.m_DisplayName);
 
-                    NetworkSpawnRPC spawnRpc = new NetworkSpawnRPC(-1, -1);
-                    spawnRpc.m_RequestAuthority = true;
+                    NetworkSpawnRPC spawnRpc = new NetworkSpawnRPC(-1, -1, true);
                     OnRPCCommand(spawnRpc.ToString());
                 } break;
             case NetworkFrame.NetworkFrameType.Authentication:
@@ -108,6 +109,7 @@ public class NetworkServer : MonoBehaviour
                         authenticationFrame.Configure(frame);
                         m_AuthorizedUsers.Add(frame.m_SenderId);
                         SendFrame(authenticationFrame);
+                        UpdatePlayer(frame);
                     }
                 } break;
             case NetworkFrame.NetworkFrameType.Ping:
@@ -129,7 +131,28 @@ public class NetworkServer : MonoBehaviour
                 } break;
         }
 
-        OnReceiveFrame();
+        _ = OnReceiveFrame();
+    }
+
+    /// <summary>
+    /// Updates a player to the most recent entity list
+    /// </summary>
+    private void UpdatePlayer(NetworkFrame refFrame)
+    {
+        if (NetworkManager.Instance.m_NetworkType == NetworkManager.ENetworkType.Mixed)
+            return;
+
+        foreach(var pair in NetworkManager.Instance.GetNetworkedObjects())
+        {
+            GameObject obj = pair.Value;
+            if (obj == null)
+                continue;
+            NetworkObjectServerInfo info = obj.GetComponent<NetworkObjectServerInfo>();
+            NetworkIdentity identity = obj.GetComponent<NetworkIdentity>();
+
+            NetworkSpawnRPC spawnRPC = new NetworkSpawnRPC(info.m_PrefabIndex, identity.m_NetworkId);
+            SendRPC(spawnRPC, refFrame);
+        }
     }
 
     private void OnRPCCommand(string command)
@@ -145,15 +168,18 @@ public class NetworkServer : MonoBehaviour
                     GameObject spawnPrefab = NetworkManager.Instance.GetObjectByIndex(spawnRPC.m_PrefabIndex);
                     GameObject prefab = Instantiate(spawnPrefab);
                     NetworkBehaviour networkBehaviour = prefab.GetComponent<NetworkBehaviour>();
+                    NetworkObjectServerInfo serverInfo = prefab.AddComponent<NetworkObjectServerInfo>();
+                    serverInfo.m_PrefabIndex = spawnRPC.m_PrefabIndex;
 
                     int id = UnityEngine.Random.Range(0, int.MaxValue);
                     prefab.GetComponent<NetworkIdentity>().m_NetworkId = id;
                     networkBehaviour.m_IsServer = true;
                     networkBehaviour.m_HasAuthority = false;
+                    networkBehaviour.m_IsClient = false;
                     NetworkManager.Instance.AddObject(id, prefab);
                     if (NetworkManager.Instance.m_NetworkType == NetworkManager.ENetworkType.Mixed)
                     {
-                        networkBehaviour.m_IsLocal = true;
+                        networkBehaviour.m_IsClient = true;
                     }
                     else
                     {
@@ -164,8 +190,8 @@ public class NetworkServer : MonoBehaviour
                     if(spawnRPC.m_RequestAuthority)
                     {
                         NetworkAuthorizationRPC authRPC = new NetworkAuthorizationRPC(
-                            networkBehaviour.m_IsLocal,
-                            networkBehaviour.m_IsServer,
+                            true,
+                            (NetworkManager.Instance.m_NetworkType == NetworkManager.ENetworkType.Mixed ? true : false),
                             true, 
                             id
                         );
@@ -176,10 +202,20 @@ public class NetworkServer : MonoBehaviour
         }
     }
 
-    private void SendRPC(NetworkRPC rpc)
+    private void SendRPC(NetworkRPC rpc, NetworkFrame networkFrame = null)
     {
-        NetworkRPCFrame frame = new NetworkRPCFrame(rpc.ToString());
-        frame.Configure(m_LastFrame);
+        NetworkRPCFrame frame;
+        if (networkFrame == null)
+        {
+            frame = new NetworkRPCFrame(rpc.ToString(), m_LastFrame.m_SenderId);
+            frame.Configure(m_LastFrame);
+        }
+        else
+        {
+            frame = new NetworkRPCFrame(rpc.ToString(), networkFrame.m_SenderId);
+            frame.Configure(networkFrame);
+        }
+
         SendFrame(frame);
     }
 
@@ -204,9 +240,14 @@ public class NetworkServer : MonoBehaviour
         return new Tuple<bool, string>(false, "To be implemented");
     }
 
-    private void SendFrame(NetworkFrame frame)
+    private void SendFrame(NetworkFrame frame, IPEndPoint endpoint = null)
     {
+        Debug.Log("Sending Frame to client: " + JsonUtility.ToJson(frame));
+
         byte[] bytes = frame.ToBytes();
-        m_Client.Send(bytes, bytes.Length, frame.GetTargetEndpoint());
+        if(endpoint == null)
+            m_Client.Send(bytes, bytes.Length, frame.GetTargetEndpoint());
+        else
+            m_Client.Send(bytes, bytes.Length, endpoint);
     }
 }

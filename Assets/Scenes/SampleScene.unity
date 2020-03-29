@@ -152,13 +152,13 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   m_ServerAddress: 127.0.0.1
   m_ServerPort: 58120
-  m_ServerPassword: 
+  m_ServerPassword: asd
   m_ProxyAddress: 127.0.0.1
   m_ProxyPort: 58120
   m_ProxyPassword: 
   m_MaxPlayers: 0
   m_ConnectionType: 0
-  m_NetworkType: 2
+  m_NetworkType: 0
   m_NetworkPrefabs: []
   m_PlayerPrefab: {fileID: 4832145647193365858, guid: 8468c419881474e40aaebb50cd9faea5,
     type: 3}

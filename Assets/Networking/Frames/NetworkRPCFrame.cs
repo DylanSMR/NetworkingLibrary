@@ -12,8 +12,8 @@ public class NetworkRPCFrame : NetworkFrame
     /// Creates a new NetworkHandshakeFrame
     /// </summary>
     /// <param name="rpc">The rpc to be sent over the network</param>
-    public NetworkRPCFrame(string rpc) 
-        : base(NetworkFrameType.RPC, NetworkClient.Instance.GetUniqueIndentifier())
+    public NetworkRPCFrame(string rpc, string id) 
+        : base(NetworkFrameType.RPC, id)
     {
         this.m_RPC = rpc;
     }

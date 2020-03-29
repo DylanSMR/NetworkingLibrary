@@ -51,8 +51,10 @@ public class NetworkManager : MonoBehaviour
         if (m_NetworkType == ENetworkType.Client || m_NetworkType == ENetworkType.Mixed)
             m_Client = gameObject.AddComponent<NetworkClient>();
 
-        Host();
-        Connect();
+        if (m_NetworkType == ENetworkType.Server || m_NetworkType == ENetworkType.Mixed)
+            Host();
+        if (m_NetworkType == ENetworkType.Client || m_NetworkType == ENetworkType.Mixed)
+            Connect("asd");
     }
 
     public void AddObject(int id, GameObject obj)
@@ -73,6 +75,9 @@ public class NetworkManager : MonoBehaviour
 
         return m_GameObjects[id];
     }
+
+    public Dictionary<int, GameObject> GetNetworkedObjects()
+        => m_GameObjects;
 
     public void RemoveObject(int id, GameObject obj)
     {

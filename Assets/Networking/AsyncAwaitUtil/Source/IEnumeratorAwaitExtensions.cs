@@ -261,12 +261,12 @@ public static class IEnumeratorAwaitExtensions
                     if (objectTrace.Any())
                     {
                         _awaiter.Complete(
-                            default(T), new Exception(
+                            default, new Exception(
                                 GenerateObjectTraceMessage(objectTrace), e));
                     }
                     else
                     {
-                        _awaiter.Complete(default(T), e);
+                        _awaiter.Complete(default, e);
                     }
 
                     yield break;

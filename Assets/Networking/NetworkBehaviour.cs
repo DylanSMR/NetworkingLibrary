@@ -7,7 +7,7 @@ public class NetworkBehaviour : MonoBehaviour
 {
     public bool m_HasAuthority;
 
-    public bool m_IsLocal;
+    public bool m_IsClient;
     public bool m_IsServer;
 
     /// <summary>
@@ -16,17 +16,6 @@ public class NetworkBehaviour : MonoBehaviour
     /// <param name="rpc"></param>
     public virtual void OnRPCCommand(string content)
     {
-        NetworkRPC rpc = NetworkRPC.FromString(content);
-
-        switch(rpc.m_Type)
-        {
-            case NetworkRPCType.RPC_OBJECT_AUTHORIZATION:
-                {
-                    NetworkAuthorizationRPC authorizationRPC = NetworkRPC.Parse<NetworkAuthorizationRPC>(content);
-                    m_HasAuthority = authorizationRPC.m_LocalAuthSet;
-                    m_IsLocal = authorizationRPC.m_LocalSet;
-                    m_IsServer = authorizationRPC.m_ServerSet;
-                } break;
-        }
+        //NetworkRPC rpc = NetworkRPC.FromString(content);
     }
 }

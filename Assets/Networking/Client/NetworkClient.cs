@@ -63,7 +63,7 @@ public class NetworkClient : MonoBehaviour
 
         m_Status = NetworkClientStatus.Connecting;
         StartCoroutine(ConnectToServer(address, port, password));
-        OnReceiveFrame();
+        _ =  OnReceiveFrame();
     }
 
     /// <summary>
@@ -193,7 +193,15 @@ public class NetworkClient : MonoBehaviour
                 } break;
         }
 
-        OnReceiveFrame();
+        _ = OnReceiveFrame();
+    }
+
+    private void Update()
+    {
+        if(Input.GetKeyDown(KeyCode.Space))
+        {
+            SendPing();
+        }
     }
 
     /// <summary>
@@ -215,7 +223,7 @@ public class NetworkClient : MonoBehaviour
 
                     networkBehaviour.m_IsServer = false;
                     networkBehaviour.m_HasAuthority = false;
-                    networkBehaviour.m_IsLocal = true;
+                    networkBehaviour.m_IsClient = true;
                     NetworkManager.Instance.AddObject(spawnRPC.m_NetworkIndex, prefab);
                 } break;
             case NetworkRPCType.RPC_OBJECT_AUTHORIZATION:
@@ -225,9 +233,10 @@ public class NetworkClient : MonoBehaviour
                     if(gameObject != null)
                     {
                         NetworkBehaviour networkBehaviour = gameObject.GetComponent<NetworkBehaviour>();
-                        networkBehaviour.m_IsLocal = authorizationRPC.m_LocalSet;
+                        networkBehaviour.m_IsClient = authorizationRPC.m_LocalSet;
                         networkBehaviour.m_HasAuthority = authorizationRPC.m_LocalAuthSet;
                         networkBehaviour.m_IsServer = authorizationRPC.m_ServerSet;
+                        gameObject.GetComponent<NetworkIdentity>().m_NetworkId = authorizationRPC.m_NetworkId;
                     }
                 } break;
             default: // This can be handled on behaviour/object
@@ -240,7 +249,10 @@ public class NetworkClient : MonoBehaviour
 
     private void SendFrame(NetworkFrame frame)
     {
-        //Debug.Log("[NetworkClient] Sending frame: " + JsonUtility.ToJson(frame));
+        frame.m_SenderId = GetUniqueIndentifier();
+        frame.m_SenderAddress = m_Address;
+        frame.m_TargetId = "server";
+        frame.m_TargetAddress = "0.0.0.0:0000";
 
         byte[] bytes = frame.ToBytes();
         m_Client.Send(bytes, bytes.Length);

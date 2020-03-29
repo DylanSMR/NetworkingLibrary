@@ -30,7 +30,7 @@ public class NetworkAuthenticationFrame : NetworkFrame
     {
         this.m_Password = m_Password;
         this.m_Response = response;
-        this.m_Message = "";
+        this.m_Message = message;
     }
 
     /// <summary>
