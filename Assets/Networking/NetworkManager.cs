@@ -27,6 +27,10 @@ public class NetworkManager : MonoBehaviour
     public ENetworkConnectionType m_ConnectionType;
     [Tooltip("Is the unity process going to be a client, a server, or both")]
     public ENetworkType m_NetworkType;
+    [Tooltip("The available prefabs for networking")]
+    public List<GameObject> m_NetworkPrefabs;
+    [Tooltip("The prefab that will be spawned when a player connects")]
+    public GameObject m_PlayerPrefab;
 
     /// <summary>
     /// A static instance to the always active NetworkManager object
@@ -34,6 +38,102 @@ public class NetworkManager : MonoBehaviour
     public static NetworkManager Instance;
     private NetworkServer m_Server;
     private NetworkClient m_Client;
+    private Dictionary<string, NetworkPlayer> m_Players;
+    private Dictionary<int, GameObject> m_GameObjects;
+
+    private void Start()
+    {
+        m_Players = new Dictionary<string, NetworkPlayer>();
+        m_GameObjects = new Dictionary<int, GameObject>();
+
+        if (m_NetworkType == ENetworkType.Server || m_NetworkType == ENetworkType.Mixed)
+            m_Server = gameObject.AddComponent<NetworkServer>(); // Create our server
+        if (m_NetworkType == ENetworkType.Client || m_NetworkType == ENetworkType.Mixed)
+            m_Client = gameObject.AddComponent<NetworkClient>();
+
+        Host();
+        Connect();
+    }
+
+    public void AddObject(int id, GameObject obj)
+    {
+        if (m_GameObjects.ContainsKey(id))
+            throw new System.Exception("[NetworkManager] Error, an existing object already exists with ID: " + id);
+
+        m_GameObjects.Add(id, obj);
+    }
+
+    public GameObject GetNetworkedObject(int id)
+    {
+        if (!m_GameObjects.ContainsKey(id))
+        {
+            Debug.LogWarning($"[NetworkManager] A object with an id of {id} was searched for, but did not exist in storage");
+            return null; 
+        }    
+
+        return m_GameObjects[id];
+    }
+
+    public void RemoveObject(int id, GameObject obj)
+    {
+        if (!m_GameObjects.ContainsKey(id))
+            return;
+
+        m_GameObjects.Remove(id);
+    }
+
+    public int GetObjectCount()
+        => m_GameObjects.Count;
+
+    public void AddPlayer(string id, NetworkPlayer player)
+    {
+        if (m_Players.ContainsKey(id))
+            return;
+
+        m_Players.Add(id, player);
+    }
+
+    public int GetPlayerCount()
+        => m_Players.Count;
+
+    public void RemovePlayer(string id)
+    {
+        if (!m_Players.ContainsKey(id))
+            return;
+
+        m_Players.Remove(id);
+    }
+
+    public int GetIndexByObject(GameObject obj)
+    {
+        if (obj == null)
+            throw new System.Exception($"[NetworkManager] The object passed into GetIndexByObject cannot be null");
+
+        int index = -2;
+        for(int i = 0; i < m_NetworkPrefabs.Count; i++)
+        {
+            if (m_NetworkPrefabs[i] == obj)
+                index = i;
+        }
+
+        if (obj == m_PlayerPrefab)
+            index = -1;
+        if (index == -2)
+            throw new System.Exception($"[NetworkManager] The object {obj} is not a verified network object! Please add it to the network prefab list.");
+
+        return index;
+    }
+
+    public GameObject GetObjectByIndex(int index)
+    {
+        if (index == -1)
+            return m_PlayerPrefab;
+
+        if (index < 0 || index > m_NetworkPrefabs.Count - 1)
+            throw new System.Exception("[NetworkManager] Index is not within the range of the prefab list");
+
+        return m_NetworkPrefabs[index];
+    }
 
     private void Awake()
     {
@@ -44,16 +144,6 @@ public class NetworkManager : MonoBehaviour
         }
         Instance = this;
         DontDestroyOnLoad(this);
-    }
-
-    private void Start()
-    {
-        if (m_NetworkType == ENetworkType.Server || m_NetworkType == ENetworkType.Mixed)
-            m_Server = gameObject.AddComponent<NetworkServer>(); // Create our server
-        if (m_NetworkType == ENetworkType.Client || m_NetworkType == ENetworkType.Mixed)
-            m_Client = gameObject.AddComponent<NetworkClient>();
-
-        Connect();
     }
 
     /// <summary>
@@ -70,7 +160,7 @@ public class NetworkManager : MonoBehaviour
     /// <param name="password">The password used to connect to the server. Leave blank if no password is required</param>
     public void Host(string address, int port, string password = "")
     {
-
+        m_Server.Host(address, port, password);
     }
 
     /// <summary>

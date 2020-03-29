@@ -1,5 +1,8 @@
-﻿using System.Collections;
+﻿using System;
+using System.Collections;
+using System.Collections.Generic;
 using System.Diagnostics;
+using System.Net;
 using System.Net.Sockets;
 using System.Threading.Tasks;
 using UnityEngine;
@@ -13,11 +16,8 @@ public class NetworkClient : MonoBehaviour
 {
     // Networking Fields
     private UdpClient m_Client;
+    private string m_Address;
     public static NetworkClient Instance;
-    /// <summary>
-    /// A boolean that represents whether the client is connected to the server/proxy
-    /// </summary>
-    public bool m_Connected { get; private set; } = false;
     /// <summary>
     /// A integer that represents how many times we have tried to connect to the server/proxy
     /// </summary>
@@ -35,7 +35,7 @@ public class NetworkClient : MonoBehaviour
     {
         if(Instance != null)
         {
-            Debug.LogWarning("[NetworkManager] A new network client was created, yet one already exists.");
+            Debug.LogWarning("[NetworkClient] A new network client was created, yet one already exists.");
             return; // We want to use the already existing network client
         }
         Instance = this;
@@ -63,6 +63,7 @@ public class NetworkClient : MonoBehaviour
 
         m_Status = NetworkClientStatus.Connecting;
         StartCoroutine(ConnectToServer(address, port, password));
+        OnReceiveFrame();
     }
 
     /// <summary>
@@ -87,16 +88,20 @@ public class NetworkClient : MonoBehaviour
             // Keep trying to connect until we either give up or eventually connect
             if(m_Status == NetworkClientStatus.Connected)
                 break;
+            if (m_Status == NetworkClientStatus.Error || m_Status == NetworkClientStatus.Unknown)
+                break;
 
             m_ConnectionTries++;
-            Debug.Log($"[NetworkClient] Attempting to connect to server [{m_ConnectionTries}/5]");
+            Debug.Log($"[NetworkClient] Attempting to connect to server [{address}:{port}][{m_ConnectionTries}/5]");
             m_Client.Connect(address, port); // Try and connect to the server
             try
             {
                 NetworkAuthenticationFrame authFrame = new NetworkAuthenticationFrame(password);
                 SendFrame(authFrame); // If we get a auth frame back, we are good! Unless we got the password wrong :/
             }
-            catch { }; // Ignore any errors, stupid errors
+            catch (Exception e) {
+                Debug.LogError(e);
+            }; // Ignore any errors, stupid errors
 
             yield return new WaitForSeconds(2.5f); // Every 2 and a half seconds we are going to try and connect again! Yay :/
         }
@@ -107,21 +112,21 @@ public class NetworkClient : MonoBehaviour
     /// </summary>
     private void SendHandshake()
     {
-
+        NetworkHandshakeFrame handshake = new NetworkHandshakeFrame("DylanSMR");
+        SendFrame(handshake);
     }
 
     /// <summary>
     /// Sends a ping request to the server to calculate our ping
-    /// Use 
     /// </summary>
-    private void SendPing(bool checkingConnection = false)
+    private void SendPing()
     {
         NetworkFrame pingFrame = new NetworkFrame(NetworkFrame.NetworkFrameType.Ping, GetUniqueIndentifier());
-        if(m_Connected)
+        if (m_Status == NetworkClientStatus.Connected)
         {
             m_Stopwatch = new Stopwatch();
             m_Stopwatch.Start();
-        }
+        }   
         SendFrame(pingFrame);
     }
 
@@ -133,7 +138,7 @@ public class NetworkClient : MonoBehaviour
         UdpReceiveResult result = await m_Client.ReceiveAsync();
         NetworkFrame frame = NetworkFrame.ReadFromBytes(result.Buffer);
 
-        switch(frame.m_Type)
+        switch (frame.m_Type)
         {
             case NetworkFrame.NetworkFrameType.Handshake:
                 {
@@ -155,7 +160,11 @@ public class NetworkClient : MonoBehaviour
                     if(authenticationFrame.m_Response == NetworkAuthenticationFrame.NetworkAuthenticationResponse.Connected)
                     {
                         m_Status = NetworkClientStatus.Connected;
+                        m_Address = authenticationFrame.m_TargetAddress;
                         Debug.Log("[NetworkClient] Connected to server.");
+
+                        SendPing();
+                        SendHandshake();
                     } else
                     {
                         m_Status = NetworkClientStatus.Error;
@@ -179,15 +188,60 @@ public class NetworkClient : MonoBehaviour
                 } break;
             case NetworkFrame.NetworkFrameType.RPC:
                 {
-
+                    NetworkRPCFrame rpcFrame = NetworkFrame.Parse<NetworkRPCFrame>(result.Buffer);
+                    OnRPCCommand(rpcFrame.m_RPC);
                 } break;
         }
 
         OnReceiveFrame();
     }
 
+    /// <summary>
+    /// Send a RPC command to a specified network id
+    /// </summary>
+    /// <param name="rpc">The RPC being sent throughout the network</param>
+    public void OnRPCCommand(string content)
+    {
+        NetworkRPC rpc = NetworkRPC.FromString(content);
+        switch(rpc.m_Type) // If a type is handled here its because it needs to be here, or the networking wont function properly
+        {
+            case NetworkRPCType.RPC_SPAWN: 
+                {
+                    NetworkSpawnRPC spawnRPC = NetworkRPC.Parse<NetworkSpawnRPC>(content);
+
+                    GameObject spawnPrefab = NetworkManager.Instance.GetObjectByIndex(spawnRPC.m_PrefabIndex);
+                    GameObject prefab = Instantiate(spawnPrefab);
+                    NetworkBehaviour networkBehaviour = prefab.GetComponent<NetworkBehaviour>();
+
+                    networkBehaviour.m_IsServer = false;
+                    networkBehaviour.m_HasAuthority = false;
+                    networkBehaviour.m_IsLocal = true;
+                    NetworkManager.Instance.AddObject(spawnRPC.m_NetworkIndex, prefab);
+                } break;
+            case NetworkRPCType.RPC_OBJECT_AUTHORIZATION:
+                {
+                    NetworkAuthorizationRPC authorizationRPC = NetworkRPC.Parse<NetworkAuthorizationRPC>(content);
+                    GameObject gameObject = NetworkManager.Instance.GetNetworkedObject(authorizationRPC.m_NetworkId);
+                    if(gameObject != null)
+                    {
+                        NetworkBehaviour networkBehaviour = gameObject.GetComponent<NetworkBehaviour>();
+                        networkBehaviour.m_IsLocal = authorizationRPC.m_LocalSet;
+                        networkBehaviour.m_HasAuthority = authorizationRPC.m_LocalAuthSet;
+                        networkBehaviour.m_IsServer = authorizationRPC.m_ServerSet;
+                    }
+                } break;
+            default: // This can be handled on behaviour/object
+                {                  
+                    // Get object it is targeted towards
+                    // Call target.OnRPCCommand(content)
+                } break;
+        }
+    }
+
     private void SendFrame(NetworkFrame frame)
     {
+        //Debug.Log("[NetworkClient] Sending frame: " + JsonUtility.ToJson(frame));
+
         byte[] bytes = frame.ToBytes();
         m_Client.Send(bytes, bytes.Length);
     }

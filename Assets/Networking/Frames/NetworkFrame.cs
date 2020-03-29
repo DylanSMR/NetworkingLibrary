@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Net;
 using System.Text;
 using UnityEngine;
 
@@ -21,6 +22,48 @@ public class NetworkFrame
     /// The unique identifier of whoever is sending this frame
     /// </summary>
     public string m_SenderId;
+    /// <summary>
+    /// The IP address of the target
+    /// </summary>
+    public string m_TargetAddress;
+    /// <summary>
+    /// The IP address of the sender
+    /// </summary>
+    public string m_SenderAddress;
+
+    /// <summary>
+    /// Configure the frame for the server to send to a client
+    /// </summary>
+    /// <param name="frame">The frame that is going to be configured</param>
+    public void Configure(NetworkFrame frame)
+    {
+        m_TargetAddress = frame.m_SenderAddress;
+        m_SenderAddress = "0.0.0.0:0000";
+    }
+
+    public IPEndPoint GetTargetEndpoint()
+    {
+        if (m_TargetAddress == "")
+            return null;
+
+        string[] split = m_TargetAddress.Split(':');
+        if (split.Length != 2)
+            return null;
+
+        return new IPEndPoint(IPAddress.Parse(split[0]), int.Parse(split[1]));
+    }
+
+    public IPEndPoint GetSenderEndpoint()
+    {
+        if (m_TargetAddress == "")
+            return null;
+
+        string[] split = m_SenderAddress.Split(':');
+        if (split.Length != 2)
+            return null;
+
+        return new IPEndPoint(IPAddress.Parse(split[0]), int.Parse(split[1]));
+    }
 
     /// <summary>
     /// Creates a networked frame to send to the server (m_TargetId will be filled in automatically)
@@ -30,6 +73,7 @@ public class NetworkFrame
     public NetworkFrame(NetworkFrameType type, string m_SenderId)
     {
         this.m_SenderId = m_SenderId;
+        this.m_Type = type;
     }
 
     /// <summary>
@@ -40,7 +84,9 @@ public class NetworkFrame
     /// <param name="m_SenderId">The ID of the server, generally should be left to default</param>
     public NetworkFrame(NetworkFrameType type, string m_TargetId, string m_SenderId = "server")
     {
-        this.m_SenderId = m_SenderId;
+        this.m_Type = type;
+        this.m_TargetId = m_TargetId;
+        this.m_SenderId = m_SenderId; 
     }
     
     /// <summary>
