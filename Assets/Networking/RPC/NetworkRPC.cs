@@ -109,9 +109,9 @@ public class NetworkTransformRPC : NetworkRPC
 
     public NetworkTransformRPC(Transform transform, int id) : base(id, NetworkRPCType.RPC_CUSTOM_TRANSFORM)
     {
-        m_Position = transform.position;
-        m_Rotation = transform.eulerAngles;
-        m_Scale = transform.localScale;
+        m_Position = MathHelpers.RoundVector3(transform.position);
+        m_Rotation = MathHelpers.RoundVector3(transform.eulerAngles);
+        m_Scale = MathHelpers.RoundVector3(transform.localScale);
     }
 }
 

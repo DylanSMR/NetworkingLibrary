@@ -97,7 +97,6 @@ public class NetworkServer : MonoBehaviour
             case NetworkFrame.NetworkFrameType.Authentication:
                 {
                     NetworkAuthenticationFrame authenticationFrame = NetworkFrame.Parse<NetworkAuthenticationFrame>(result.Buffer);
-                    Debug.Log("[NetworkServer] Received auth frame: " + JsonUtility.ToJson(authenticationFrame));
                     if(authenticationFrame.m_Password != m_Password && m_Password != "")
                     {
                         authenticationFrame.m_Response = NetworkAuthenticationFrame.NetworkAuthenticationResponse.IncorrectPassword;
@@ -135,7 +134,6 @@ public class NetworkServer : MonoBehaviour
                         authenticationFrame.m_Response = NetworkAuthenticationFrame.NetworkAuthenticationResponse.Connected;
                         authenticationFrame.ConfigureForServer(tempPlayer);
 
-                        Debug.Log("[NEtworkServer] Snding auth frame");
                         SendFrame(authenticationFrame, tempPlayer);
                     }
                 } break;
@@ -246,7 +244,6 @@ public class NetworkServer : MonoBehaviour
                     if (spawnRPC.m_PrefabIndex == -1)
                     {
                         player.m_NetworkId = id;
-                        Debug.Log("Setting Network ID: " + player.m_NetworkId);
                     }
 
                     networkBehaviour.m_Spawner = player.m_NetworkId;
