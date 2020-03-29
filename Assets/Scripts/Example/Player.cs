@@ -23,6 +23,12 @@ public class Player : NetworkBehaviour
         camera.gameObject.SetActive(false);
     }
 
+    public void UpdateColor(Color color)
+    {
+        m_Color = color;
+        GetComponentInChildren<Renderer>().material.SetColor("_BaseColor", color);
+    }
+
     public override void OnAuthorityChanged(bool status)
     {
         base.OnAuthorityChanged(status);
@@ -97,6 +103,9 @@ public class Player : NetworkBehaviour
         {
             case NetworkRPCType.RPC_CUSTOM_TRANSFORM:
                 {
+                    if (NetworkManager.Instance.m_NetworkType == NetworkManager.ENetworkType.Mixed)
+                        break; // We are sort of server, so we have most up to date value
+
                     NetworkTransformRPC transformRPC = NetworkRPC.Parse<NetworkTransformRPC>(content);
                     transform.position = transformRPC.m_Position;
                     transform.eulerAngles = transformRPC.m_Rotation;
@@ -104,9 +113,12 @@ public class Player : NetworkBehaviour
                 } break;
             case NetworkRPCType.RPC_CUSTOM_PLAYER:
                 {
+                    if (NetworkManager.Instance.m_NetworkType == NetworkManager.ENetworkType.Mixed)
+                        break; // We are sort of server, so we have most up to date value
+
                     NetworkPlayerRPC playerRPC = NetworkRPC.Parse<NetworkPlayerRPC>(content);
-                    GetComponentInChildren<Renderer>().material.SetColor("_BaseColor", playerRPC.m_Color);
-                    m_Color = playerRPC.m_Color;
+                    UpdateColor(m_Color);
+
                     if(playerRPC.m_Health != -1)
                         m_Health = playerRPC.m_Health;
                 } break;

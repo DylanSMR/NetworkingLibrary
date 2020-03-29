@@ -62,11 +62,14 @@ public class NetworkClient : MonoBehaviour
     /// <param name="password">The password used to connect to the server</param>
     public void Connect(string address, int port, string password = "")
     {
-        m_Client = new UdpClient();
-
         m_Status = NetworkClientStatus.Connecting;
         StartCoroutine(ConnectToServer(address, port, password));
-        _ =  OnReceiveFrame();
+    }
+
+    private void OnApplicationQuit()
+    {
+        m_Client.Close();
+        m_Client.Dispose();
     }
 
     /// <summary>
@@ -88,6 +91,12 @@ public class NetworkClient : MonoBehaviour
                 break;
             }
 
+            if(m_Client != null && m_Client.Client != null && m_Client.Client.Connected && m_Status != NetworkClientStatus.Connected)
+            {
+                NetworkAuthenticationFrame authFrame = new NetworkAuthenticationFrame(password);
+                SendFrame(authFrame); // If we get a auth frame back, we are good! Unless we got the password wrong :/
+                yield return new WaitForSeconds(2f);
+            }
             // Keep trying to connect until we either give up or eventually connect
             if(m_Status == NetworkClientStatus.Connected)
                 break;
@@ -96,7 +105,15 @@ public class NetworkClient : MonoBehaviour
 
             m_ConnectionTries++;
             Debug.Log($"[NetworkClient] Attempting to connect to server [{address}:{port}][{m_ConnectionTries}/5]");
+            if (m_Client != null)
+            {
+                m_Client.Close();
+                m_Client.Dispose();
+            }
+
+            m_Client = new UdpClient();
             m_Client.Connect(address, port); // Try and connect to the server
+            _ = OnReceiveFrame();
             try
             {
                 NetworkAuthenticationFrame authFrame = new NetworkAuthenticationFrame(password);

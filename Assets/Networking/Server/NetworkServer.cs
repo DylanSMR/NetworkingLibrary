@@ -97,6 +97,7 @@ public class NetworkServer : MonoBehaviour
             case NetworkFrame.NetworkFrameType.Authentication:
                 {
                     NetworkAuthenticationFrame authenticationFrame = NetworkFrame.Parse<NetworkAuthenticationFrame>(result.Buffer);
+                    Debug.Log("[NetworkServer] Received auth frame: " + JsonUtility.ToJson(authenticationFrame));
                     if(authenticationFrame.m_Password != m_Password && m_Password != "")
                     {
                         authenticationFrame.m_Response = NetworkAuthenticationFrame.NetworkAuthenticationResponse.IncorrectPassword;
@@ -134,6 +135,7 @@ public class NetworkServer : MonoBehaviour
                         authenticationFrame.m_Response = NetworkAuthenticationFrame.NetworkAuthenticationResponse.Connected;
                         authenticationFrame.ConfigureForServer(tempPlayer);
 
+                        Debug.Log("[NEtworkServer] Snding auth frame");
                         SendFrame(authenticationFrame, tempPlayer);
                     }
                 } break;
@@ -293,6 +295,10 @@ public class NetworkServer : MonoBehaviour
                     GameObject obj = NetworkManager.Instance.GetNetworkedObject(transformRPC.m_NetworkId);
                     if(PlayerHasAuthority(obj, player))
                     {
+                        obj.transform.position = transformRPC.m_Position;
+                        obj.transform.eulerAngles = transformRPC.m_Rotation;
+                        obj.transform.localScale = transformRPC.m_Scale;
+
                         UpdateRPC(obj, transformRPC);
                         SendRPCAll(transformRPC); // Probably should add a exclude to this so we dont send it to ourselves? Idk
                     }
@@ -304,11 +310,24 @@ public class NetworkServer : MonoBehaviour
                     GameObject obj = NetworkManager.Instance.GetNetworkedObject(playerRPC.m_NetworkId);
                     if (PlayerHasAuthority(obj, player))
                     {
+                        if(playerRPC.m_Health != -1)
+                        {
+                            Debug.Log($"[NetworkServer] {playerRPC.m_NetworkId} is trying to edit their health to {playerRPC.m_Health}!");
+                            break;
+                        }
+
+                        obj.GetComponent<Player>().UpdateColor(playerRPC.m_Color);
                         UpdateRPC(obj, playerRPC);
                         SendRPCAll(playerRPC); // Probably should add a exclude to this so we dont send it to ourselves? Idk
                     }
                 } break;
         }
+    }
+
+    private void OnApplicationQuit()
+    {
+        m_Client.Close();
+        m_Client.Dispose();
     }
 
     public void DestroyObject(int id)
