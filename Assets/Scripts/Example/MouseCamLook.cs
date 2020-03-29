@@ -21,16 +21,21 @@ public class MouseCamLook : MonoBehaviour
     private Vector2 mouseLook;
     // smooth the mouse moving
     private Vector2 smoothV;
+    Player player;
 
     // Use this for initialization
     void Start()
     {
         character = this.transform.parent.gameObject;
+        player = GetComponentInParent<Player>();
     }
 
     // Update is called once per frame
     void Update()
     {
+        if (!player.m_Movement)
+            return;
+
         // md is mosue delta
         var md = new Vector2(Input.GetAxisRaw("Mouse X"), Input.GetAxisRaw("Mouse Y"));
         md = Vector2.Scale(md, new Vector2(sensitivity * smoothing, sensitivity * smoothing));

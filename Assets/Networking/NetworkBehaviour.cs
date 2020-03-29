@@ -11,6 +11,11 @@ public class NetworkBehaviour : MonoBehaviour
     public bool m_IsServer;
 
     /// <summary>
+    /// Who requested to spawn this object?
+    /// </summary>
+    public int m_Spawner;
+
+    /// <summary>
     /// Triggers when a RPC command is sent over the network
     /// </summary>
     /// <param name="rpc"></param>

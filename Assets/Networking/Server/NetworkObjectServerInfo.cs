@@ -34,6 +34,9 @@ public class NetworkObjectServerInfo : MonoBehaviour
 
     public bool HasAuthority(NetworkPlayer player)
     {
+        if (player == null)
+            return true; // Its probably server
+
         return m_Authorities.Contains(player.m_Id);
     }
 

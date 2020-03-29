@@ -228,9 +228,9 @@ public class NetworkClient : MonoBehaviour
                         break; // We already have it spawned for us
 
                     NetworkSpawnRPC spawnRPC = NetworkRPC.Parse<NetworkSpawnRPC>(content);
-                    if(NetworkManager.Instance.GetNetworkedObject(spawnRPC.m_NetworkIndex) != null)
+                    if(NetworkManager.Instance.GetNetworkedObject(spawnRPC.m_NetworkId) != null)
                     {
-                        Debug.LogWarning("[NetworkClient] Asked to spawn prefab we already have -> " + spawnRPC.m_NetworkIndex);
+                        Debug.LogWarning("[NetworkClient] Asked to spawn prefab we already have -> " + spawnRPC.m_NetworkId);
                         break;
                     }
 
@@ -241,7 +241,8 @@ public class NetworkClient : MonoBehaviour
                     networkBehaviour.m_IsServer = false;
                     networkBehaviour.m_HasAuthority = false;
                     networkBehaviour.m_IsClient = true;
-                    NetworkManager.Instance.AddObject(spawnRPC.m_NetworkIndex, prefab);
+                    prefab.GetComponent<NetworkIdentity>().m_NetworkId = spawnRPC.m_NetworkId;
+                    NetworkManager.Instance.AddObject(spawnRPC.m_NetworkId, prefab);
                 } break;
             case NetworkRPCType.RPC_LIB_OBJECT_NETAUTH:
                 {
@@ -256,6 +257,12 @@ public class NetworkClient : MonoBehaviour
                         networkBehaviour.OnAuthorityChanged(authorizationRPC.m_LocalAuthSet);
                         gameObject.GetComponent<NetworkIdentity>().m_NetworkId = authorizationRPC.m_NetworkId;
                     }
+                } break;
+            case NetworkRPCType.RPC_LIB_DESTROY:
+                {
+                    GameObject gameObject = NetworkManager.Instance.GetNetworkedObject(rpc.m_NetworkId);
+                    if (gameObject != null)
+                        Destroy(gameObject);
                 } break;
             default: // This can be handled on behaviour/object
                 {

@@ -90,7 +90,7 @@ public class NetworkServer : MonoBehaviour
                     });
                     player = NetworkManager.Instance.GetPlayer(frame.m_SenderId);
 
-                    NetworkSpawnRPC spawnRpc = new NetworkSpawnRPC(-1, -1, true);
+                    NetworkSpawnRPC spawnRpc = new NetworkSpawnRPC(-1, true);
                     OnRPCCommand(spawnRpc.ToString(), player);
                     UpdatePlayer(player);
                 } break;
@@ -189,7 +189,7 @@ public class NetworkServer : MonoBehaviour
 
             NetworkIdentity identity = obj.GetComponent<NetworkIdentity>();
 
-            NetworkSpawnRPC spawnRPC = new NetworkSpawnRPC(info.m_PrefabIndex, identity.m_NetworkId);
+            NetworkSpawnRPC spawnRPC = new NetworkSpawnRPC(info.m_PrefabIndex, false, identity.m_NetworkId);
             SendRPC(spawnRPC, player); // Spawn it
 
             if (!info.HasAuthority(player) && !IsPlayerServer(player))
@@ -238,11 +238,18 @@ public class NetworkServer : MonoBehaviour
                     networkBehaviour.m_HasAuthority = false;
                     networkBehaviour.m_IsClient = false;
                     NetworkManager.Instance.AddObject(id, prefab);
-
-                    spawnRPC.m_NetworkIndex = id;
+                    spawnRPC.m_NetworkId = id;
                     SendRPC(spawnRPC, player);
 
-                    if(spawnRPC.m_RequestAuthority)
+                    if (spawnRPC.m_PrefabIndex == -1)
+                    {
+                        player.m_NetworkId = id;
+                        Debug.Log("Setting Network ID: " + player.m_NetworkId);
+                    }
+
+                    networkBehaviour.m_Spawner = player.m_NetworkId;
+
+                    if (spawnRPC.m_RequestAuthority)
                         serverInfo.AddAuthority(player);
 
                     if (IsPlayerServer(player))
@@ -270,7 +277,15 @@ public class NetworkServer : MonoBehaviour
                     }
                 }
                 break;
-
+            case NetworkRPCType.RPC_LIB_DESTROY:
+                {
+                    GameObject obj = NetworkManager.Instance.GetNetworkedObject(rpc.m_NetworkId);
+                    if (PlayerHasAuthority(obj, player))
+                    {
+                        Destroy(obj);
+                        SendRPCAll(rpc);
+                    }
+                } break;
             case NetworkRPCType.RPC_CUSTOM_TRANSFORM:
                 {
                     NetworkTransformRPC transformRPC = NetworkRPC.Parse<NetworkTransformRPC>(command);
@@ -296,6 +311,12 @@ public class NetworkServer : MonoBehaviour
         }
     }
 
+    public void DestroyObject(int id)
+    {
+        NetworkDestroyRPC rpc = new NetworkDestroyRPC(id);
+        OnRPCCommand(rpc.ToString(), null);
+    }
+
     private void UpdateRPC(GameObject obj, NetworkRPC rpc)
     {
         NetworkObjectServerInfo info = obj.GetComponent<NetworkObjectServerInfo>();
@@ -319,7 +340,7 @@ public class NetworkServer : MonoBehaviour
         return false;
     }
 
-    private void SendRPCAll(NetworkRPC rpc)
+    public void SendRPCAll(NetworkRPC rpc)
     {
         foreach(var pair in NetworkManager.Instance.GetPlayers())
         {

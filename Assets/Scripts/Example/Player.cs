@@ -8,6 +8,10 @@ public class Player : NetworkBehaviour
     private NetworkIdentity m_Identity;
     private Camera camera;
 
+    public float m_Health = 100f;
+    public Color m_Color = Color.black;
+    public bool m_Movement = true;
+
     public float speed = 100.0f;
     private float translation;
     private float straffe;
@@ -17,7 +21,6 @@ public class Player : NetworkBehaviour
         m_Identity = GetComponent<NetworkIdentity>();
         camera = GetComponentInChildren<Camera>();
         camera.gameObject.SetActive(false);
-        Cursor.lockState = CursorLockMode.Locked;
     }
 
     public override void OnAuthorityChanged(bool status)
@@ -33,7 +36,14 @@ public class Player : NetworkBehaviour
         if(m_HasAuthority)
         {
             GUI.Label(new Rect(100, 100, 100, 100), $"Ping: {NetworkClient.Instance.m_LastPing}ms");
+            GUI.Label(new Rect(100, 200, 100, 100), $"Health: {m_Health}");
         }
+    }
+
+    public void OnFireGun()
+    {
+        NetworkSpawnRPC spawnRPC = new NetworkSpawnRPC(0);
+        NetworkClient.Instance.SendRPC(spawnRPC);
     }
 
     private void Update()
@@ -42,20 +52,23 @@ public class Player : NetworkBehaviour
         {
             if (m_HasAuthority)
             {
-                translation = Input.GetAxis("Vertical") * speed * Time.deltaTime;
-                straffe = Input.GetAxis("Horizontal") * speed * Time.deltaTime;
-                transform.Translate(straffe, 0, translation);
+                if(m_Movement)
+                {
+                    translation = Input.GetAxis("Vertical") * speed * Time.deltaTime;
+                    straffe = Input.GetAxis("Horizontal") * speed * Time.deltaTime;
+                    transform.Translate(straffe, 0, translation);
+                }
 
                 if (Input.GetKeyDown(KeyCode.F))
                 {
-                    Color c = new Color(Random.Range(0.0f, 1.0f), Random.Range(0.0f, 1.0f), Random.Range(0.0f, 1.0f));
-                    NetworkPlayerRPC rpc = new NetworkPlayerRPC(c, m_Identity.m_NetworkId);
+                    m_Color = new Color(Random.Range(0.0f, 1.0f), Random.Range(0.0f, 1.0f), Random.Range(0.0f, 1.0f));
+                    NetworkPlayerRPC rpc = new NetworkPlayerRPC(m_Color, -1, m_Identity.m_NetworkId); // Health is -1 as it doesnt matter we we set it, only what the server sets
                     NetworkClient.Instance.SendRPC(rpc);
                 }
 
                 if (Input.GetKeyDown(KeyCode.Escape))
                 {
-                    Cursor.lockState = CursorLockMode.None;
+                    m_Movement = !m_Movement;
                 }
             }
         } 
@@ -93,6 +106,9 @@ public class Player : NetworkBehaviour
                 {
                     NetworkPlayerRPC playerRPC = NetworkRPC.Parse<NetworkPlayerRPC>(content);
                     GetComponentInChildren<Renderer>().material.SetColor("_BaseColor", playerRPC.m_Color);
+                    m_Color = playerRPC.m_Color;
+                    if(playerRPC.m_Health != -1)
+                        m_Health = playerRPC.m_Health;
                 } break;
         }
     }

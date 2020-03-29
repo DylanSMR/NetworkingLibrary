@@ -59,16 +59,24 @@ public class NetworkSpawnRPC : NetworkRPC
     /// The index of the prefab we are trying to spawn
     /// </summary>
     public int m_PrefabIndex;
-    public int m_NetworkIndex;
     public bool m_RequestAuthority;
 
-    public NetworkSpawnRPC(int index, int netId, bool requestAuthority = false, int id = -1) : base(id, NetworkRPCType.RPC_LIB_SPAWN)
+    public NetworkSpawnRPC(int index, bool requestAuthority = false, int id = -1) : base(id, NetworkRPCType.RPC_LIB_SPAWN)
     {
         this.m_PrefabIndex = index;
-        m_NetworkIndex = netId;
         this.m_RequestAuthority = requestAuthority;
     }
 }
+
+[Serializable]
+public class NetworkDestroyRPC : NetworkRPC
+{ 
+    public NetworkDestroyRPC(int netId) : base(netId, NetworkRPCType.RPC_LIB_DESTROY)
+    {
+
+    }
+}
+
 
 /// <summary>
 /// An RPC used to assign authorization to objects on the network
@@ -111,10 +119,12 @@ public class NetworkTransformRPC : NetworkRPC
 public class NetworkPlayerRPC : NetworkRPC
 {
     public Color m_Color;
+    public float m_Health;
 
-    public NetworkPlayerRPC(Color color, int id) : base(id, NetworkRPCType.RPC_CUSTOM_PLAYER)
+    public NetworkPlayerRPC(Color color, float health, int id) : base(id, NetworkRPCType.RPC_CUSTOM_PLAYER)
     {
         m_Color = color;
+        m_Health = health;
     }  
 }
 
@@ -122,6 +132,7 @@ public enum NetworkRPCType
 {
     RPC_LIB_INVALID,
     RPC_LIB_SPAWN,
+    RPC_LIB_DESTROY,
     RPC_LIB_OBJECT_NETAUTH,
 
     RPC_CUSTOM_TRANSFORM,
