@@ -1,4 +1,5 @@
-﻿using System.Collections;
+﻿using System;
+using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 
@@ -57,6 +58,11 @@ public class NetworkManager : MonoBehaviour
             Connect("asd");
     }
 
+    /// <summary>
+    /// Add's an object to the local network
+    /// </summary>
+    /// <param name="id">The network id of the object</param>
+    /// <param name="obj">The game object itself</param>
     public void AddObject(int id, GameObject obj)
     {
         if (m_GameObjects.ContainsKey(id))
@@ -65,21 +71,34 @@ public class NetworkManager : MonoBehaviour
         m_GameObjects.Add(id, obj);
     }
 
+    /// <summary>
+    /// Gets a saved networked object
+    /// </summary>
+    /// <param name="id">The network id of the object</param>
+    /// <returns>A network object, or null if no object exists with the specified id</returns>
     public GameObject GetNetworkedObject(int id)
     {
         if (!m_GameObjects.ContainsKey(id))
         {
-            Debug.LogWarning($"[NetworkManager] A object with an id of {id} was searched for, but did not exist in storage");
+            //Debug.LogWarning($"[NetworkManager] A object with an id of {id} was searched for, but did not exist in storage");
             return null; 
         }    
 
         return m_GameObjects[id];
     }
 
+    /// <summary>
+    /// Gets the dictionary of networked objects (id's mapped to game objects)
+    /// </summary>
+    /// <returns>A dictionary of networked objects</returns>
     public Dictionary<int, GameObject> GetNetworkedObjects()
         => m_GameObjects;
 
-    public void RemoveObject(int id, GameObject obj)
+    /// <summary>
+    /// Removes an object from the networked list, DOES NOT DESTROY THE GAME OBJECT
+    /// </summary>
+    /// <param name="id">The network id of the object</param>
+    public void RemoveObject(int id)
     {
         if (!m_GameObjects.ContainsKey(id))
             return;
@@ -87,9 +106,25 @@ public class NetworkManager : MonoBehaviour
         m_GameObjects.Remove(id);
     }
 
+    /// <summary>
+    /// Gets a count of how many objects are saved locally
+    /// </summary>
+    /// <returns>An integer representing the count</returns>
     public int GetObjectCount()
         => m_GameObjects.Count;
 
+    /// <summary>
+    /// Returns the dictionary of players
+    /// </summary>
+    /// <returns></returns>
+    public Dictionary<string, NetworkPlayer> GetPlayers()
+        => m_Players;
+
+    /// <summary>
+    /// Adds a player to the local network
+    /// </summary>
+    /// <param name="id">The unique id of the player</param>
+    /// <param name="player">A custom NetworkPlayer class</param>
     public void AddPlayer(string id, NetworkPlayer player)
     {
         if (m_Players.ContainsKey(id))
@@ -98,9 +133,25 @@ public class NetworkManager : MonoBehaviour
         m_Players.Add(id, player);
     }
 
+    public NetworkPlayer GetPlayer(string id)
+    {
+        if (m_Players.ContainsKey(id))
+            return m_Players[id];
+
+        return null;
+    }
+
+    /// <summary>
+    /// Gets the amount of players connected
+    /// </summary>
+    /// <returns>An integer representing the count</returns>
     public int GetPlayerCount()
         => m_Players.Count;
 
+    /// <summary>
+    /// Removes a player from the local list, DOES NOT DESTROY/KICK/BAN THE PLAYER
+    /// </summary>
+    /// <param name="id">The unique id of the player</param>
     public void RemovePlayer(string id)
     {
         if (!m_Players.ContainsKey(id))
@@ -109,7 +160,12 @@ public class NetworkManager : MonoBehaviour
         m_Players.Remove(id);
     }
 
-    public int GetIndexByObject(GameObject obj)
+    /// <summary>
+    /// Retreives an index of the prefab from the networked prefabs list
+    /// </summary>
+    /// <param name="obj">The prefab being searched for</param>
+    /// <returns>An integer representing the index, or -2 if no index is found</returns>
+    public int GetIndexByPrefab(GameObject obj)
     {
         if (obj == null)
             throw new System.Exception($"[NetworkManager] The object passed into GetIndexByObject cannot be null");
@@ -129,6 +185,11 @@ public class NetworkManager : MonoBehaviour
         return index;
     }
 
+    /// <summary>
+    /// Gets an object by the index, using the networked prefabs array
+    /// </summary>
+    /// <param name="index">The index of the object</param>
+    /// <returns>The object itself, or a exception if no object is found</returns>
     public GameObject GetObjectByIndex(int index)
     {
         if (index == -1)

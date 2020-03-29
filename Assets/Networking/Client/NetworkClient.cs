@@ -27,6 +27,8 @@ public class NetworkClient : MonoBehaviour
     /// </summary>
     public NetworkClientStatus m_Status = NetworkClientStatus.Disconnected;
 
+    private int randomNumber = 0;
+
     // Ping Fields
     public float m_LastPing { get; private set; } = -1;
     private Stopwatch m_Stopwatch; // Maybe there is a more useful way? Time.time possibly
@@ -39,6 +41,7 @@ public class NetworkClient : MonoBehaviour
             return; // We want to use the already existing network client
         }
         Instance = this;
+        randomNumber = UnityEngine.Random.Range(0, 100);
     }
 
     /// <summary>
@@ -48,7 +51,7 @@ public class NetworkClient : MonoBehaviour
     /// <returns>The unqiue identifier for this user</returns>
     public string GetUniqueIndentifier()
     {
-        return SystemInfo.deviceUniqueIdentifier;
+        return SystemInfo.deviceUniqueIdentifier + randomNumber.ToString();
     }
 
     /// <summary>
@@ -163,8 +166,8 @@ public class NetworkClient : MonoBehaviour
                         m_Address = authenticationFrame.m_TargetAddress;
                         Debug.Log("[NetworkClient] Connected to server.");
 
-                        SendPing();
                         SendHandshake();
+                        SendPing();
                     } else
                     {
                         m_Status = NetworkClientStatus.Error;
@@ -198,7 +201,7 @@ public class NetworkClient : MonoBehaviour
 
     private void Update()
     {
-        if(Input.GetKeyDown(KeyCode.Space))
+        if(Input.GetKeyDown(KeyCode.P))
         {
             SendPing();
         }
@@ -213,9 +216,17 @@ public class NetworkClient : MonoBehaviour
         NetworkRPC rpc = NetworkRPC.FromString(content);
         switch(rpc.m_Type) // If a type is handled here its because it needs to be here, or the networking wont function properly
         {
-            case NetworkRPCType.RPC_SPAWN: 
+            case NetworkRPCType.RPC_LIB_SPAWN: 
                 {
+                    if (NetworkManager.Instance.m_NetworkType == NetworkManager.ENetworkType.Mixed)
+                        break; // We already have it spawned for us
+
                     NetworkSpawnRPC spawnRPC = NetworkRPC.Parse<NetworkSpawnRPC>(content);
+                    if(NetworkManager.Instance.GetNetworkedObject(spawnRPC.m_NetworkIndex) != null)
+                    {
+                        Debug.LogWarning("[NetworkClient] Asked to spawn prefab we already have -> " + spawnRPC.m_NetworkIndex);
+                        break;
+                    }
 
                     GameObject spawnPrefab = NetworkManager.Instance.GetObjectByIndex(spawnRPC.m_PrefabIndex);
                     GameObject prefab = Instantiate(spawnPrefab);
@@ -226,7 +237,7 @@ public class NetworkClient : MonoBehaviour
                     networkBehaviour.m_IsClient = true;
                     NetworkManager.Instance.AddObject(spawnRPC.m_NetworkIndex, prefab);
                 } break;
-            case NetworkRPCType.RPC_OBJECT_AUTHORIZATION:
+            case NetworkRPCType.RPC_LIB_OBJECT_NETAUTH:
                 {
                     NetworkAuthorizationRPC authorizationRPC = NetworkRPC.Parse<NetworkAuthorizationRPC>(content);
                     GameObject gameObject = NetworkManager.Instance.GetNetworkedObject(authorizationRPC.m_NetworkId);
@@ -240,13 +251,34 @@ public class NetworkClient : MonoBehaviour
                     }
                 } break;
             default: // This can be handled on behaviour/object
-                {                  
-                    // Get object it is targeted towards
-                    // Call target.OnRPCCommand(content)
+                {
+                    GameObject obj = NetworkManager.Instance.GetNetworkedObject(rpc.m_NetworkId);
+                    if(obj != null)
+                    {
+                        NetworkBehaviour behaviour = obj.GetComponent<NetworkBehaviour>();
+                        if(behaviour != null)
+                        {
+                            behaviour.OnRPCCommand(content);
+                        }
+                    }
                 } break;
         }
     }
 
+    /// <summary>
+    /// Sends a RPC to the game server
+    /// </summary>
+    /// <param name="rpc">The RPC being sent</param>
+    public void SendRPC(NetworkRPC rpc)
+    {
+        NetworkRPCFrame networkRPCFrame = new NetworkRPCFrame(rpc.ToString(), GetUniqueIndentifier());
+        SendFrame(networkRPCFrame);
+    }
+
+    /// <summary>
+    /// Sends a frame to the server
+    /// </summary>
+    /// <param name="frame">The frame being sent to the server</param>
     private void SendFrame(NetworkFrame frame)
     {
         frame.m_SenderId = GetUniqueIndentifier();

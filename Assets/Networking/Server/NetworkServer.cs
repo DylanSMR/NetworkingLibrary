@@ -12,7 +12,6 @@ public class NetworkServer : MonoBehaviour
     // Networking Fields
     private UdpClient m_Client;
     public static NetworkServer Instance;
-    private NetworkFrame m_LastFrame;
 
     // Server Fields
     private string m_Password;
@@ -20,6 +19,8 @@ public class NetworkServer : MonoBehaviour
     /// A list of users who are authorized and can use the authorized frames
     /// </summary>
     private List<string> m_AuthorizedUsers;
+
+    public Dictionary<string, IPEndPoint> m_IPMap;
 
     private void Awake()
     {
@@ -31,8 +32,15 @@ public class NetworkServer : MonoBehaviour
         Instance = this;
 
         m_AuthorizedUsers = new List<string>();
+        m_IPMap = new Dictionary<string, IPEndPoint>();
     }
 
+    /// <summary>
+    /// Attempts to host a networked server
+    /// </summary>
+    /// <param name="address">The address of the proxy/server</param>
+    /// <param name="port">The port of the proxy/server</param>
+    /// <param name="password">The password required to enter the server</param>
     public void Host(string address, int port, string password)
     {
         m_Password = password;
@@ -51,17 +59,21 @@ public class NetworkServer : MonoBehaviour
         }
     }
 
+    /// <summary>
+    /// Called when the server receives a networked frame
+    /// </summary>
+    /// <returns></returns>
     private async Task OnReceiveFrame()
     {
         UdpReceiveResult result = await m_Client.ReceiveAsync();
         NetworkFrame frame = NetworkFrame.ReadFromBytes(result.Buffer);
-        m_LastFrame = frame;
 
         if (NetworkManager.Instance.m_ConnectionType == NetworkManager.ENetworkConnectionType.Server) // A proxy will automatically handle this for us
         {
             frame.m_SenderAddress = $"{result.RemoteEndPoint.Address}:{result.RemoteEndPoint.Port}"; // This is the user who sent it
             frame.m_TargetAddress = "0.0.0.0:0000"; // For now this is recognized as sever
         }
+        NetworkPlayer player = NetworkManager.Instance.GetPlayer(frame.m_SenderId);
 
         switch(frame.m_Type)
         {
@@ -72,8 +84,16 @@ public class NetworkServer : MonoBehaviour
                     NetworkHandshakeFrame handshake = NetworkFrame.Parse<NetworkHandshakeFrame>(result.Buffer);
                     Debug.Log($"[NetworkServer] Received handshake info: " + handshake.m_DisplayName);
 
+                    NetworkManager.Instance.AddPlayer(handshake.m_SenderId, new NetworkPlayer()
+                    {
+                        m_Id = handshake.m_SenderId,
+                        m_Name = handshake.m_DisplayName
+                    });
+                    player = NetworkManager.Instance.GetPlayer(frame.m_SenderId);
+
                     NetworkSpawnRPC spawnRpc = new NetworkSpawnRPC(-1, -1, true);
-                    OnRPCCommand(spawnRpc.ToString());
+                    OnRPCCommand(spawnRpc.ToString(), player);
+                    UpdatePlayer(player);
                 } break;
             case NetworkFrame.NetworkFrameType.Authentication:
                 {
@@ -81,35 +101,41 @@ public class NetworkServer : MonoBehaviour
                     if(authenticationFrame.m_Password != m_Password && m_Password != "")
                     {
                         authenticationFrame.m_Response = NetworkAuthenticationFrame.NetworkAuthenticationResponse.IncorrectPassword;
-                        authenticationFrame.Configure(frame);
-                        SendFrame(authenticationFrame);
+                        authenticationFrame.ConfigureForServer(player);
+                        SendFrame(authenticationFrame, player);
                     } else if (NetworkManager.Instance.m_ConnectionType == NetworkManager.ENetworkConnectionType.Proxy && !m_Client.Client.Connected)
                     {
                         authenticationFrame.m_Response = NetworkAuthenticationFrame.NetworkAuthenticationResponse.Error;
                         authenticationFrame.m_Message = "server_error_proxy";
-                        authenticationFrame.Configure(frame);
-                        SendFrame(authenticationFrame);
+                        authenticationFrame.ConfigureForServer(player);
+                        SendFrame(authenticationFrame, player);
                     }
                     else if (IsBanned(frame.m_SenderId).Item1) // Store this in a variable or cache later?
                     {
                         authenticationFrame.m_Response = NetworkAuthenticationFrame.NetworkAuthenticationResponse.Banned;
                         authenticationFrame.m_Message = IsBanned(frame.m_SenderId).Item2;
-                        authenticationFrame.Configure(frame);
-                        SendFrame(authenticationFrame);
+                        authenticationFrame.ConfigureForServer(player);
+                        SendFrame(authenticationFrame, player);
                     }
                     else if (NetworkManager.Instance.GetPlayerCount() == NetworkManager.Instance.m_MaxPlayers && NetworkManager.Instance.m_MaxPlayers > 0)
                     {
                         authenticationFrame.m_Response = NetworkAuthenticationFrame.NetworkAuthenticationResponse.LobbyFull;
-                        authenticationFrame.Configure(frame);
-                        SendFrame(authenticationFrame);
+                        authenticationFrame.ConfigureForServer(player);
+                        SendFrame(authenticationFrame, player);
                     }
                     else 
                     {
-                        authenticationFrame.m_Response = NetworkAuthenticationFrame.NetworkAuthenticationResponse.Connected;
-                        authenticationFrame.Configure(frame);
+                        NetworkPlayer tempPlayer = new NetworkPlayer()
+                        {
+                            m_Id = frame.m_SenderId
+                        };
                         m_AuthorizedUsers.Add(frame.m_SenderId);
-                        SendFrame(authenticationFrame);
-                        UpdatePlayer(frame);
+                        m_IPMap.Add(frame.m_SenderId, frame.GetSenderEndpoint());
+
+                        authenticationFrame.m_Response = NetworkAuthenticationFrame.NetworkAuthenticationResponse.Connected;
+                        authenticationFrame.ConfigureForServer(tempPlayer);
+
+                        SendFrame(authenticationFrame, tempPlayer);
                     }
                 } break;
             case NetworkFrame.NetworkFrameType.Ping:
@@ -118,8 +144,8 @@ public class NetworkServer : MonoBehaviour
                         break;
 
                     NetworkFrame pingFrame = new NetworkFrame(NetworkFrame.NetworkFrameType.Ping, frame.m_SenderId, "server");
-                    pingFrame.Configure(frame);
-                    SendFrame(pingFrame);
+                    pingFrame.ConfigureForServer(player);
+                    SendFrame(pingFrame, player);
                 } break;
             case NetworkFrame.NetworkFrameType.RPC:
                 {
@@ -127,7 +153,7 @@ public class NetworkServer : MonoBehaviour
                         break;
 
                     NetworkRPCFrame rpcFrame = NetworkFrame.Parse<NetworkRPCFrame>(result.Buffer);
-                    OnRPCCommand(rpcFrame.m_RPC);
+                    OnRPCCommand(rpcFrame.m_RPC, player);
                 } break;
         }
 
@@ -135,11 +161,24 @@ public class NetworkServer : MonoBehaviour
     }
 
     /// <summary>
+    /// Determines if the player is on the same instance as the server 
+    /// </summary>
+    /// <param name="player"></param>
+    /// <returns></returns>
+    public bool IsPlayerServer(NetworkPlayer player)
+    {
+        if (NetworkClient.Instance != null && NetworkClient.Instance.GetUniqueIndentifier() == player.m_Id)
+            return true;
+
+        return false;
+    }
+
+    /// <summary>
     /// Updates a player to the most recent entity list
     /// </summary>
-    private void UpdatePlayer(NetworkFrame refFrame)
+    private void UpdatePlayer(NetworkPlayer player)
     {
-        if (NetworkManager.Instance.m_NetworkType == NetworkManager.ENetworkType.Mixed)
+        if (IsPlayerServer(player))
             return;
 
         foreach(var pair in NetworkManager.Instance.GetNetworkedObjects())
@@ -148,20 +187,43 @@ public class NetworkServer : MonoBehaviour
             if (obj == null)
                 continue;
             NetworkObjectServerInfo info = obj.GetComponent<NetworkObjectServerInfo>();
+
             NetworkIdentity identity = obj.GetComponent<NetworkIdentity>();
 
             NetworkSpawnRPC spawnRPC = new NetworkSpawnRPC(info.m_PrefabIndex, identity.m_NetworkId);
-            SendRPC(spawnRPC, refFrame);
+            SendRPC(spawnRPC, player); // Spawn it
+
+            if (!info.HasAuthority(player) && !IsPlayerServer(player))
+            {
+                NetworkAuthorizationRPC authRPC = new NetworkAuthorizationRPC(
+                    true,
+                    false,
+                    false,
+                    identity.m_NetworkId
+                );
+                SendRPC(authRPC, player);
+            }
+
+            foreach (var type in info.m_RPCTypes) // Update any extra RPC's the object may have
+            {
+                NetworkRPC rpc = info.GetRPC(type);
+                if (rpc != null)
+                    SendRPC(rpc, player);
+            }
         }
     }
 
-    private void OnRPCCommand(string command)
+    /// <summary>
+    /// Triggers an RPC command on the server
+    /// </summary>
+    /// <param name="command">The raw json command</param>
+    private void OnRPCCommand(string command, NetworkPlayer player)
     {
         NetworkRPC rpc = NetworkRPC.FromString(command);
 
         switch (rpc.m_Type)
         {
-            case NetworkRPCType.RPC_SPAWN:
+            case NetworkRPCType.RPC_LIB_SPAWN:
                 {
                     NetworkSpawnRPC spawnRPC = NetworkRPC.Parse<NetworkSpawnRPC>(command);
 
@@ -177,46 +239,79 @@ public class NetworkServer : MonoBehaviour
                     networkBehaviour.m_HasAuthority = false;
                     networkBehaviour.m_IsClient = false;
                     NetworkManager.Instance.AddObject(id, prefab);
-                    if (NetworkManager.Instance.m_NetworkType == NetworkManager.ENetworkType.Mixed)
-                    {
-                        networkBehaviour.m_IsClient = true;
-                    }
-                    else
-                    {
-                        spawnRPC.m_NetworkIndex = id;
-                        SendRPC(spawnRPC);
-                    }
+
+                    spawnRPC.m_NetworkIndex = id;
+                    SendRPC(spawnRPC, player);
 
                     if(spawnRPC.m_RequestAuthority)
+                        serverInfo.AddAuthority(player);
+
+                    if (IsPlayerServer(player))
                     {
+                        // Sending to ourselves
+
                         NetworkAuthorizationRPC authRPC = new NetworkAuthorizationRPC(
                             true,
-                            (NetworkManager.Instance.m_NetworkType == NetworkManager.ENetworkType.Mixed ? true : false),
-                            true, 
+                            (NetworkManager.Instance.m_NetworkType == NetworkManager.ENetworkType.Mixed) ? true : false, // We might be server because we can mixed host
+                            spawnRPC.m_RequestAuthority,
                             id
                         );
-                        SendRPC(authRPC);
+                        SendRPC(authRPC, player);
+                    } else
+                    {
+                        // Sending to another client
+
+                        NetworkAuthorizationRPC authRPC = new NetworkAuthorizationRPC(
+                            true,
+                            false, // Other clients are definitely not server
+                            spawnRPC.m_RequestAuthority,
+                            id
+                        );
+                        SendRPC(authRPC, player);
                     }
                 }
                 break;
+
+            case NetworkRPCType.RPC_CUSTOM_TRANSFORM:
+                {
+                    NetworkTransformRPC transformRPC = NetworkRPC.Parse<NetworkTransformRPC>(command);
+
+                    GameObject obj = NetworkManager.Instance.GetNetworkedObject(transformRPC.m_NetworkId);
+                    if (obj != null)
+                    {
+                        NetworkObjectServerInfo info = obj.GetComponent<NetworkObjectServerInfo>();                 
+                        if (info != null)
+                        {
+                            if(info.HasAuthority(player))
+                            {
+                                info.UpdateRPC(transformRPC);
+                                SendRPCAll(transformRPC); // Probably should add a exclude to this so we dont send it to ourselves? Idk
+                            }
+                        }
+                    }
+                } break;
         }
     }
 
-    private void SendRPC(NetworkRPC rpc, NetworkFrame networkFrame = null)
+    private void SendRPCAll(NetworkRPC rpc)
     {
-        NetworkRPCFrame frame;
-        if (networkFrame == null)
+        foreach(var pair in NetworkManager.Instance.GetPlayers())
         {
-            frame = new NetworkRPCFrame(rpc.ToString(), m_LastFrame.m_SenderId);
-            frame.Configure(m_LastFrame);
+            NetworkPlayer player = pair.Value;
+            SendRPC(rpc, player);
         }
-        else
-        {
-            frame = new NetworkRPCFrame(rpc.ToString(), networkFrame.m_SenderId);
-            frame.Configure(networkFrame);
-        }
+    }
 
-        SendFrame(frame);
+    /// <summary>
+    /// Constructs a NetworkFrame and sends it from a NetworkRPC
+    /// </summary>
+    /// <param name="rpc">The RPC being sent over the network</param>
+    private void SendRPC(NetworkRPC rpc, NetworkPlayer player)
+    {
+        NetworkRPCFrame frame = new NetworkRPCFrame(rpc.ToString(), player.m_Id);
+        frame.ConfigureForServer(player);
+
+        SendFrame(frame, player);
     }
 
     /// <summary>
@@ -240,14 +335,14 @@ public class NetworkServer : MonoBehaviour
         return new Tuple<bool, string>(false, "To be implemented");
     }
 
-    private void SendFrame(NetworkFrame frame, IPEndPoint endpoint = null)
+    /// <summary>
+    /// Sends a frame to the network
+    /// </summary>
+    /// <param name="frame">The frame being sent</param>
+    /// <param name="endpoint">The endpoint of the user who is receiving this frame</param>
+    private void SendFrame(NetworkFrame frame, NetworkPlayer player)
     {
-        Debug.Log("Sending Frame to client: " + JsonUtility.ToJson(frame));
-
         byte[] bytes = frame.ToBytes();
-        if(endpoint == null)
-            m_Client.Send(bytes, bytes.Length, frame.GetTargetEndpoint());
-        else
-            m_Client.Send(bytes, bytes.Length, endpoint);
+        m_Client.Send(bytes, bytes.Length, m_IPMap[player.m_Id]);
     }
 }

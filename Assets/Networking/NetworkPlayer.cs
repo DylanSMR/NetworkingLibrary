@@ -6,5 +6,5 @@ using UnityEngine;
 public class NetworkPlayer 
 {
     public string m_Name;
-    public IPEndPoint m_Address;
+    public string m_Id;
 }

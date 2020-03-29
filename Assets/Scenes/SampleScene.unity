@@ -158,9 +158,9 @@ MonoBehaviour:
   m_ProxyPassword: 
   m_MaxPlayers: 0
   m_ConnectionType: 0
-  m_NetworkType: 0
+  m_NetworkType: 2
   m_NetworkPrefabs: []
-  m_PlayerPrefab: {fileID: 4832145647193365858, guid: 8468c419881474e40aaebb50cd9faea5,
+  m_PlayerPrefab: {fileID: 1887528844373716772, guid: 8468c419881474e40aaebb50cd9faea5,
     type: 3}
 --- !u!4 &630510035
 Transform:
@@ -343,7 +343,7 @@ Transform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1687258581}
   m_LocalRotation: {x: -0.022957042, y: 0.97606146, z: -0.17338957, w: -0.12927918}
-  m_LocalPosition: {x: 2.32, y: 1.203, z: 2.378}
+  m_LocalPosition: {x: 2.17, y: 3.1, z: 7.78}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_Children: []
   m_Father: {fileID: 0}

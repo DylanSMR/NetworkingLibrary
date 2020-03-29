@@ -34,10 +34,11 @@ public class NetworkFrame
     /// <summary>
     /// Configure the frame for the server to send to a client
     /// </summary>
-    /// <param name="frame">The frame that is going to be configured</param>
-    public void Configure(NetworkFrame frame)
+    /// <param name="player">The player used to configure this frame</param>
+    public void ConfigureForServer(NetworkPlayer player)
     {
-        m_TargetAddress = frame.m_SenderAddress;
+        IPEndPoint point = NetworkServer.Instance.m_IPMap[player.m_Id];
+        m_TargetAddress = $"{point.Address}:{point.Port}";
         m_SenderAddress = "0.0.0.0:0000";
     }
 

@@ -27,7 +27,7 @@ public class NetworkRPC
     /// </summary>
     /// <param name="id">The network id of the object this rpc is going to</param>
     /// <param name="type">The type of RPC this is</param>
-    public NetworkRPC(int id, NetworkRPCType type = NetworkRPCType.RPC_INVALID)
+    public NetworkRPC(int id, NetworkRPCType type = NetworkRPCType.RPC_LIB_INVALID)
     {
         this.m_NetworkId = id;
         this.m_Type = type;
@@ -62,7 +62,7 @@ public class NetworkSpawnRPC : NetworkRPC
     public int m_NetworkIndex;
     public bool m_RequestAuthority;
 
-    public NetworkSpawnRPC(int index, int netId, bool requestAuthority = false, int id = -1) : base(id, NetworkRPCType.RPC_SPAWN)
+    public NetworkSpawnRPC(int index, int netId, bool requestAuthority = false, int id = -1) : base(id, NetworkRPCType.RPC_LIB_SPAWN)
     {
         this.m_PrefabIndex = index;
         m_NetworkIndex = netId;
@@ -80,7 +80,7 @@ public class NetworkAuthorizationRPC : NetworkRPC
     public bool m_ServerSet;
     public bool m_LocalAuthSet;
 
-    public NetworkAuthorizationRPC(bool local, bool server, bool localauth, int id) : base(id, NetworkRPCType.RPC_OBJECT_AUTHORIZATION)
+    public NetworkAuthorizationRPC(bool local, bool server, bool localauth, int id) : base(id, NetworkRPCType.RPC_LIB_OBJECT_NETAUTH)
     {
         m_LocalSet = local;
         m_ServerSet = server;
@@ -88,9 +88,30 @@ public class NetworkAuthorizationRPC : NetworkRPC
     }
 }
 
+/// <summary>
+/// An RPC used to update a objects transform to other players
+/// A better way might be to use velocity, and have the server send transform updates?
+/// </summary>
+[Serializable]
+public class NetworkTransformRPC : NetworkRPC
+{
+    public Vector3 m_Position;
+    public Vector3 m_Rotation;
+    public Vector3 m_Scale;
+
+    public NetworkTransformRPC(Transform transform, int id) : base(id, NetworkRPCType.RPC_CUSTOM_TRANSFORM)
+    {
+        m_Position = transform.position;
+        m_Rotation = transform.eulerAngles;
+        m_Scale = transform.localScale;
+    }
+}
+
 public enum NetworkRPCType
 {
-    RPC_INVALID,
-    RPC_SPAWN,
-    RPC_OBJECT_AUTHORIZATION
+    RPC_LIB_INVALID,
+    RPC_LIB_SPAWN,
+    RPC_LIB_OBJECT_NETAUTH,
+
+    RPC_CUSTOM_TRANSFORM
 }
