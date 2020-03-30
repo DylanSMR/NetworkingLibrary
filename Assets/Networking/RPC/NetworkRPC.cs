@@ -163,7 +163,8 @@ public enum NetworkDisconnectType
     Kick,
     Ban,
     Request,
-    LostConnection
+    LostConnection,
+    ServerStopped
 }
 
 

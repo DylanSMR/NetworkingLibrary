@@ -51,7 +51,7 @@ public class Bullet : NetworkBehaviour
 
     private void OnCollisionEnter(Collision collision)
     {
-        if(m_IsServer)
+        if (m_IsServer)
         {
             // If a client calls this their game will probably just crash since NetworkServer.Instance isnt a thing
 

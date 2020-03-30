@@ -20,7 +20,7 @@ public class NetworkPlayer
             NetworkBehaviour behaviour = networkedPair.Value.GetComponent<NetworkBehaviour>();
             if (behaviour == null)
                 continue;
-            if(NetworkManager.Instance.m_Settings.m_NetworkType == ENetworkType.Client)
+            if(NetworkManager.Instance.IsClient())
             {
                 if(behaviour.m_HasAuthority)
                 {

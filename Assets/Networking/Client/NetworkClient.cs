@@ -19,6 +19,14 @@ public class NetworkClient : MonoBehaviour
     private UdpClient m_Client;
     public static NetworkClient Instance;
     private int m_FrameCount;
+
+    private Coroutine m_Coroutine_CTS;
+    private Coroutine m_Coroutine_HB;
+    private Coroutine m_Coroutine_PING;
+    private Coroutine m_Coroutine_IMPT;
+
+    private string m_DefaultName = "Default";
+
     /// <summary>
     /// A integer that represents how many times we have tried to connect to the server/proxy
     /// </summary>
@@ -67,7 +75,7 @@ public class NetworkClient : MonoBehaviour
     public void Connect(string address, int port, string password = "")
     {
         m_Status = NetworkClientStatus.Connecting;
-        StartCoroutine(ConnectToServer(address, port, password));
+        m_Coroutine_CTS = StartCoroutine(ConnectToServer(address, port, password));
     }
 
     private void OnApplicationQuit()
@@ -87,7 +95,7 @@ public class NetworkClient : MonoBehaviour
                 if (m_ServerHeartbeats + 1 == 3)
                 {
                     ELogger.Log($"Lost connection to server", ELogger.LogType.Server);
-                    // Cleanup
+                    Clean();
                     continue;
                 }
 
@@ -100,6 +108,32 @@ public class NetworkClient : MonoBehaviour
         }
     }
 
+    public void Clean()
+    {
+        if (NetworkManager.Instance.IsMixed())
+            return;
+
+        ELogger.Log("Cleaning up client", ELogger.LogType.Client);
+
+        NetworkManager.Instance.Clean();
+        if (m_Coroutine_CTS != null)
+            StopCoroutine(m_Coroutine_CTS);
+        if (m_Coroutine_HB != null)
+            StopCoroutine(m_Coroutine_HB);
+        if (m_Coroutine_PING != null)
+            StopCoroutine(m_Coroutine_PING);
+        if (m_Coroutine_IMPT != null)
+            StopCoroutine(m_Coroutine_IMPT);
+
+        if(m_Client != null)
+        {
+            m_Client.Close();
+            m_Client.Dispose();
+        }
+
+        Destroy(this);
+    }
+
     /// <summary>
     /// Runs a loop to ensure connection to the game server. 
     /// After a few tries it will eventually fail and log an error
@@ -108,7 +142,7 @@ public class NetworkClient : MonoBehaviour
     /// <param name="address">The address of the game server/proxy</param>
     /// <param name="port">The port of the game server/proxy</param>
     /// <param name="password">The password of the game server/proxy</param>
-    private IEnumerator ConnectToServer(string address, int port, string password)
+    private IEnumerator ConnectToServer(string address, int port, string password) // Rework this entire function
     {
         for(; ;)
         {
@@ -160,7 +194,7 @@ public class NetworkClient : MonoBehaviour
     /// </summary>
     private void SendHandshake()
     {
-        NetworkHandshakeFrame handshake = new NetworkHandshakeFrame("DylanSMR");
+        NetworkHandshakeFrame handshake = new NetworkHandshakeFrame(m_DefaultName);
         SendFrame(handshake);
     }
 
@@ -267,9 +301,9 @@ public class NetworkClient : MonoBehaviour
                         ELogger.Log("Connected to server.", ELogger.LogType.Client);
 
                         SendHandshake();
-                        StartCoroutine(PingChecker());
-                        StartCoroutine(ImportantFrameWorker());
-                        StartCoroutine(HeartbeatWorker());
+                        m_Coroutine_PING = StartCoroutine(PingChecker());
+                        m_Coroutine_IMPT = StartCoroutine(ImportantFrameWorker());
+                        m_Coroutine_HB = StartCoroutine(HeartbeatWorker());
                     } else
                     {
                         m_Status = NetworkClientStatus.Error;
@@ -289,6 +323,7 @@ public class NetworkClient : MonoBehaviour
                         {
                             Debug.LogWarning($"[Client] Failed to connect to server. Unknown reason: {authenticationFrame.m_Message}");
                         }
+                        Clean();
                     }
                 } break;
             case NetworkFrame.NetworkFrameType.RPC:
@@ -343,7 +378,7 @@ public class NetworkClient : MonoBehaviour
         {
             case NetworkRPCType.RPC_LIB_SPAWN: 
                 {
-                    if (NetworkManager.Instance.m_Settings.m_NetworkType == ENetworkType.Mixed)
+                    if (NetworkManager.Instance.IsMixed())
                         break; // We already have it spawned for us
 
                     NetworkSpawnRPC spawnRPC = NetworkRPC.Parse<NetworkSpawnRPC>(content);
@@ -385,7 +420,7 @@ public class NetworkClient : MonoBehaviour
                 } break;
             case NetworkRPCType.RPC_LIB_TRANSFORM:
                 {
-                    if (NetworkManager.Instance.m_Settings.m_NetworkType == ENetworkType.Mixed)
+                    if (NetworkManager.Instance.IsMixed())
                         break; // We are sort of server, so we have most up to date value
 
                     NetworkTransformRPC transformRPC = NetworkRPC.Parse<NetworkTransformRPC>(content);
@@ -431,6 +466,7 @@ public class NetworkClient : MonoBehaviour
                     if (disconnectRPC.m_Player.m_Id == GetUniqueIndentifier())
                     {
                         ELogger.Log($"We were disconnected for reason '{disconnectRPC.m_Reason}' with type {disconnectRPC.m_Type}|{disconnectRPC.m_DisconnectType}", ELogger.LogType.Client);
+                        Clean();
                         UnityEditor.EditorApplication.isPlaying = false;
                     }
                     else

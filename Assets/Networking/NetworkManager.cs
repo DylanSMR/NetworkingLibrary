@@ -18,30 +18,12 @@ public class NetworkManager : MonoBehaviour
     private Dictionary<string, NetworkPlayer> m_Players;
     private Dictionary<int, GameObject> m_GameObjects;
 
+    public bool m_IsPlaying = false;
+
     private void Start()
     {
         m_Players = new Dictionary<string, NetworkPlayer>();
         m_GameObjects = new Dictionary<int, GameObject>();
-
-        if(m_Settings.m_NetworkType == ENetworkType.Client)
-            if (m_Server != null)
-                Destroy(m_Server);
-
-        if (m_Settings.m_NetworkType == ENetworkType.Server)
-            if (m_Client != null)
-                Destroy(m_Client);
-
-        if (m_Settings.m_NetworkType == ENetworkType.Server || m_Settings.m_NetworkType == ENetworkType.Mixed)
-            if(m_Server == null)
-                m_Server = gameObject.AddComponent<NetworkServer>();
-
-        if (m_Settings.m_NetworkType == ENetworkType.Client || m_Settings.m_NetworkType == ENetworkType.Mixed)
-            m_Client = gameObject.AddComponent<NetworkClient>();
-
-        if (m_Settings.m_NetworkType == ENetworkType.Server || m_Settings.m_NetworkType == ENetworkType.Mixed)
-            Host();
-        if (m_Settings.m_NetworkType == ENetworkType.Client || m_Settings.m_NetworkType == ENetworkType.Mixed)
-            Connect();
     }
 
     /// <summary>
@@ -194,6 +176,14 @@ public class NetworkManager : MonoBehaviour
         DontDestroyOnLoad(this);
     }
 
+    public bool IsClient()
+        => (NetworkServer.Instance == null && NetworkClient.Instance != null);
+    public bool IsServer()
+        => (NetworkServer.Instance != null && NetworkClient.Instance == null);
+
+    public bool IsMixed()
+        => (NetworkServer.Instance != null && NetworkClient.Instance != null);
+
     /// <summary>
     /// Starts hosting a server with the editor specified address, port and password
     /// </summary>
@@ -208,7 +198,50 @@ public class NetworkManager : MonoBehaviour
     /// <param name="password">The password used to connect to the server. Leave blank if no password is required</param>
     public void Host(string address, int port, string password = "")
     {
+        if (m_Client != null)
+            Destroy(m_Client);
+
+        m_IsPlaying = true;
         m_Server.Host(address, port, password);
+    }
+
+    public void HostWithProxy(string address, int port, string password = "")
+    {
+        if (m_Client != null)
+            Destroy(m_Client);
+
+        if (m_Server == null)
+            m_Server = gameObject.AddComponent<NetworkServer>();
+
+        m_IsPlaying = true;
+        if (m_Server == null)
+            m_Server = gameObject.AddComponent<NetworkServer>();
+        m_Server.Host(address, port, password);
+    }
+
+    public void HostMixed(string addr, int port, string pass, bool proxy)
+    {
+        m_IsPlaying = true;
+        if (!proxy)
+        {
+            if (m_Server == null)
+                m_Server = gameObject.AddComponent<NetworkServer>();
+            m_Server.Host(addr, port, pass);
+
+            if(m_Client == null)
+                m_Client = gameObject.AddComponent<NetworkClient>();
+            m_Client.Connect(addr, port, pass);
+        }
+        else
+        {
+            if (m_Server == null)
+                m_Server = gameObject.AddComponent<NetworkServer>();
+            m_Server.HostAsProxy(addr, port, pass);
+
+            if (m_Client == null)
+                m_Client = gameObject.AddComponent<NetworkClient>();
+            m_Client.Connect(addr, port, pass);
+        }
     }
 
     /// <summary>
@@ -226,6 +259,17 @@ public class NetworkManager : MonoBehaviour
     /// <param name="password">The password required for the server. Leave blank if no password is required</param>
     public void Connect(string serverAddress, int serverPort, string password = "")
     {
+        if (m_Server != null)
+            Destroy(m_Server);
+
+        m_Client = gameObject.AddComponent<NetworkClient>();
+        m_IsPlaying = true;
         m_Client.Connect(serverAddress, serverPort, password);
+    }
+
+    public void Clean()
+    {
+        m_Players = new Dictionary<string, NetworkPlayer>();
+        m_GameObjects = new Dictionary<int, GameObject>();
     }
 }

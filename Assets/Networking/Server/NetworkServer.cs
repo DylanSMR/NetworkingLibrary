@@ -24,6 +24,10 @@ public class NetworkServer : MonoBehaviour
     /// </summary>
     private List<string> m_AuthorizedUsers;
 
+    private Coroutine m_Coroutine_IMPF;
+    private Coroutine m_Coroutine_HB;
+    private Coroutine m_Coroutine_CTP;
+
     public Dictionary<string, IPEndPoint> m_IPMap;
 
     private void Awake()
@@ -57,7 +61,7 @@ public class NetworkServer : MonoBehaviour
                 if(m_Heartbeats[player.m_Id] + 1 == 3)
                 {
                     ELogger.Log($"Player {player.m_Name} lost connection to server", ELogger.LogType.Server);
-                    KickPlayer(player, "Lost Connection", NetworkDisconnectType.LostConnection);
+                    RemovePlayer(player, "Lost Connection", NetworkDisconnectType.LostConnection);
                     continue;
                 }
 
@@ -80,18 +84,17 @@ public class NetworkServer : MonoBehaviour
     public void Host(string address, int port, string password)
     {
         m_Password = password;
-        if (NetworkManager.Instance.m_Settings.m_ConnectionType == ENetworkConnectionType.Proxy)
-        {
-            m_Client = new UdpClient();
-            m_Client.Connect(address, port);
-            ELogger.Log($"Connecting to proxy at {address}:{port}", ELogger.LogType.Server);
-            StartCoroutine(ProxyConnectWorker(address, port));
-        }
-        else
-        {
-            m_Client = new UdpClient(port); // Host server
-            OnServerStarted(address, port);
-        }
+        m_Client = new UdpClient(port); // Host server
+        OnServerStarted(address, port);
+    }
+
+    public void HostAsProxy(string address, int port, string password)
+    {
+        m_Password = password;
+        m_Client = new UdpClient();
+        m_Client.Connect(address, port);
+        ELogger.Log($"Connecting to proxy at {address}:{port}", ELogger.LogType.Server);
+        m_Coroutine_IMPF = StartCoroutine(ProxyConnectWorker(address, port));
     }
 
     private IEnumerator ProxyConnectWorker(string address, int port)
@@ -121,7 +124,7 @@ public class NetworkServer : MonoBehaviour
                     NetworkPlayer player = importantPair.Key.m_Player;
                     if(importantPair.Key.m_Tries > 4) // They have had 4 chances to ack this frame, lets just kick them and assume they cant hear us
                     {
-                        KickPlayer(player, "Lost Connection", NetworkDisconnectType.LostConnection, true);
+                        RemovePlayer(player, "Lost Connection", NetworkDisconnectType.LostConnection, true);
                         continue;
                     }
                     if (importantPair.Value + 2.0f > Time.time)
@@ -188,11 +191,6 @@ public class NetworkServer : MonoBehaviour
                     if (authenticationFrame.m_Password != m_Password && m_Password != "")
                     {
                         authenticationFrame.m_Response = NetworkAuthenticationFrame.NetworkAuthenticationResponse.IncorrectPassword;
-                        SendFrame(authenticationFrame, tempPlayer);
-                    } else if (NetworkManager.Instance.m_Settings.m_ConnectionType == ENetworkConnectionType.Proxy && !m_Client.Client.Connected)
-                    {
-                        authenticationFrame.m_Response = NetworkAuthenticationFrame.NetworkAuthenticationResponse.Error;
-                        authenticationFrame.m_Message = "server_error_proxy";
                         SendFrame(authenticationFrame, tempPlayer);
                     }
                     else if (IsBanned(frame.m_SenderId).Item1) // Store this in a variable or cache later?
@@ -266,6 +264,19 @@ public class NetworkServer : MonoBehaviour
             return true;
 
         return false;
+    }
+
+    private void Update()
+    {
+        if (Input.GetKeyDown(KeyCode.E))
+        {
+            StopServer("Restarting");
+        }
+    }
+
+    public void StopServer(string reason)
+    {
+        OnServerStopped(NetworkServerStopType.Gracefully, reason);
     }
 
     /// <summary>
@@ -343,7 +354,7 @@ public class NetworkServer : MonoBehaviour
                     if (IsPlayerServer(player))
                     {
                         authRPC = new NetworkAuthorizationRPC(
-                            true, (NetworkManager.Instance.m_Settings.m_NetworkType == ENetworkType.Mixed) ? true : false, spawnRPC.m_RequestAuthority, id
+                            true, (NetworkManager.Instance.IsMixed()) ? true : false, spawnRPC.m_RequestAuthority, id
                         );
                     } else
                     {
@@ -385,12 +396,12 @@ public class NetworkServer : MonoBehaviour
                     if (disconnctRPC.m_Player == player)
                     {
                         // Disconnection checks?
-                        KickPlayer(player, "Disconnected", NetworkDisconnectType.Request, true);
+                        RemovePlayer(player, "Disconnected", NetworkDisconnectType.Request, true);
                     }
                     else
                     {
                         // Authoratative admin checks later : TODO
-                        KickPlayer(player, $"Kicked by: {player.m_Name}", NetworkDisconnectType.Kick, true);
+                        RemovePlayer(player, $"Kicked by: {player.m_Name}", NetworkDisconnectType.Kick, true);
                     }
                 } break;
         }
@@ -409,8 +420,31 @@ public class NetworkServer : MonoBehaviour
 
         return id;
     }
+    
+    public void Clean()
+    {
+        ELogger.Log($"Cleaning up", ELogger.LogType.Server);
 
-    public void KickPlayer(NetworkPlayer player, string reason, NetworkDisconnectType type = NetworkDisconnectType.Kick, bool deleteObjects = false)
+        if (m_Client != null)
+        {
+            m_Client.Close();
+            m_Client.Dispose();
+        }
+
+        if (m_Coroutine_CTP != null)
+            StopCoroutine(m_Coroutine_CTP);
+        if (m_Coroutine_HB != null)
+            StopCoroutine(m_Coroutine_HB);
+        if (m_Coroutine_IMPF != null)
+            StopCoroutine(m_Coroutine_IMPF);
+
+        if (NetworkManager.Instance.IsServer() || NetworkManager.Instance.IsMixed())
+            NetworkManager.Instance.Clean();
+
+        Destroy(this);
+    }
+
+    public void RemovePlayer(NetworkPlayer player, string reason, NetworkDisconnectType type = NetworkDisconnectType.Kick, bool deleteObjects = false)
     {
         if(player == null)
             return;
@@ -437,6 +471,8 @@ public class NetworkServer : MonoBehaviour
 
         OnPlayerDisconnected(player, type, reason);
         NetworkManager.Instance.RemovePlayer(player.m_Id);
+        if (m_AuthorizedUsers.Contains(player.m_Id))
+            m_AuthorizedUsers.Remove(player.m_Id);
     }
 
     private void OnApplicationQuit()
@@ -574,8 +610,8 @@ public class NetworkServer : MonoBehaviour
     {
         ELogger.Log($"Server started on: {address}:{port}", ELogger.LogType.Server);
         m_Status = NetworkServerStatus.Connected;
-        StartCoroutine(ImportantFrameWorker());
-        StartCoroutine(HeartbeatWorker());
+        m_Coroutine_IMPF = StartCoroutine(ImportantFrameWorker());
+        m_Coroutine_HB = StartCoroutine(HeartbeatWorker());
         InitializeNetworkedObjects();
         _ = OnReceiveFrame();
     }
@@ -610,16 +646,17 @@ public class NetworkServer : MonoBehaviour
         m_Status = NetworkServerStatus.Stopped;
         ELogger.Log($"Server stopped for reason '{reason}' with type {type}", ELogger.LogType.Server);
 
-        foreach(NetworkPlayer player in NetworkManager.Instance.GetPlayers())
+        if (NetworkManager.Instance != null)
         {
-            KickPlayer(player, "Server Stopping", NetworkDisconnectType.LostConnection, true);
+            NetworkManager.Instance.m_IsPlaying = false;
+
+            foreach (NetworkPlayer player in NetworkManager.Instance.GetPlayers())
+            {
+                RemovePlayer(player, "Server Stopping", NetworkDisconnectType.ServerStopped, true);
+            }
         }
 
-        if(m_Client != null)
-        {
-            m_Client.Close();
-            m_Client.Dispose();
-        }
+        Clean();
     }
     
     /// <summary>
