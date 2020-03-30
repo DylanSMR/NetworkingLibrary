@@ -162,6 +162,7 @@ public enum NetworkDisconnectType
 { 
     Kick,
     Ban,
+    Request,
     LostConnection
 }
 

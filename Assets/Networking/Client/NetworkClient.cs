@@ -351,6 +351,9 @@ public class NetworkClient : MonoBehaviour
                         break;
 
                     GameObject spawnPrefab = NetworkManager.Instance.GetObjectByIndex(spawnRPC.m_PrefabIndex);
+                    if (spawnPrefab == null)
+                        break;
+
                     GameObject prefab = Instantiate(spawnPrefab);
                     NetworkBehaviour networkBehaviour = prefab.GetComponent<NetworkBehaviour>();
 

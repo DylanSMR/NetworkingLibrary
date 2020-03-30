@@ -15,6 +15,7 @@ public class Bullet : NetworkBehaviour
     private void Start()
     {
         m_Identity = GetComponent<NetworkIdentity>();
+        m_Body = GetComponent<Rigidbody>();
 
         if (m_IsServer)
         {
@@ -29,39 +30,31 @@ public class Bullet : NetworkBehaviour
             transform.position = gun.transform.position + (gun.transform.forward / 2.5f);
             transform.rotation = gun.transform.rotation;
             m_KillAt = Time.time + 3f;
-            StartCoroutine(UpdateTransform());
         }
     }
 
     private void Update()
     {
-        if (!m_IsServer)
-            return;
-
-        if(Time.time > m_KillAt)
+        if (m_IsServer)
         {
-            NetworkServer.Instance.DestroyNetworkedObject(m_Identity.m_NetworkId);
-            return;
+            if (Time.time > m_KillAt)
+            {
+                NetworkServer.Instance.DestroyNetworkedObject(m_Identity.m_NetworkId);
+                return;
+            }
         }
 
+        // No matter who it is do this, we dont bother updating transform since the server handles collisions
+        // So if a client moves this bullet only they will see it. This should save on server perf
         m_Body.velocity += transform.forward * Time.deltaTime * m_Speed;
-    }
-
-    private IEnumerator UpdateTransform()
-    {
-        while(true)
-        {
-            NetworkTransformRPC rpc = new NetworkTransformRPC(transform, m_Identity.m_NetworkId);
-            NetworkServer.Instance.SendRPCAll(rpc);
-
-            yield return new WaitForSeconds(60 / 1000);
-        }
     }
 
     private void OnCollisionEnter(Collision collision)
     {
         if(m_IsServer)
         {
+            // If a client calls this their game will probably just crash since NetworkServer.Instance isnt a thing
+
             GameObject collided = collision.gameObject;
             Player player = collided.GetComponentInParent<Player>();
             if (player == null)

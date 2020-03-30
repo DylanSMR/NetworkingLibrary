@@ -57,7 +57,7 @@ public class NetworkServer : MonoBehaviour
                 if(m_Heartbeats[player.m_Id] + 1 == 3)
                 {
                     ELogger.Log($"Player {player.m_Name} lost connection to server", ELogger.LogType.Server);
-                    KickPlayer(player, "Lost Connection", true);
+                    KickPlayer(player, "Lost Connection", NetworkDisconnectType.LostConnection);
                     continue;
                 }
 
@@ -121,7 +121,7 @@ public class NetworkServer : MonoBehaviour
                     NetworkPlayer player = importantPair.Key.m_Player;
                     if(importantPair.Key.m_Tries > 4) // They have had 4 chances to ack this frame, lets just kick them and assume they cant hear us
                     {
-                        KickPlayer(player, "Lost Connection", true);
+                        KickPlayer(player, "Lost Connection", NetworkDisconnectType.LostConnection, true);
                         continue;
                     }
                     if (importantPair.Value + 2.0f > Time.time)
@@ -282,7 +282,6 @@ public class NetworkServer : MonoBehaviour
             if (obj == null)
                 continue;
             NetworkObjectServerInfo info = obj.GetComponent<NetworkObjectServerInfo>();
-
             NetworkIdentity identity = obj.GetComponent<NetworkIdentity>();
 
             NetworkSpawnRPC spawnRPC = new NetworkSpawnRPC(info.m_PrefabIndex, false, identity.m_NetworkId);
@@ -291,14 +290,10 @@ public class NetworkServer : MonoBehaviour
             if (!info.HasAuthority(player) && !IsPlayerServer(player))
             {
                 NetworkAuthorizationRPC authRPC = new NetworkAuthorizationRPC(
-                    true,
-                    false,
-                    false,
-                    identity.m_NetworkId
+                    true, false, false, identity.m_NetworkId
                 );
                 SendRPC(authRPC, player);
             }
-
             foreach (var type in info.m_RPCTypes) // Update any extra RPC's the object may have
             {
                 NetworkRPC rpc = info.GetRPC(type);
@@ -326,18 +321,12 @@ public class NetworkServer : MonoBehaviour
                     GameObject prefab = Instantiate(spawnPrefab);
                     NetworkBehaviour networkBehaviour = prefab.GetComponent<NetworkBehaviour>();
                     NetworkObjectServerInfo serverInfo = prefab.AddComponent<NetworkObjectServerInfo>();
-                    serverInfo.m_PrefabIndex = spawnRPC.m_PrefabIndex;
 
-                    int id = UnityEngine.Random.Range(0, int.MaxValue);
-                    prefab.GetComponent<NetworkIdentity>().m_NetworkId = id;
-                    networkBehaviour.m_IsServer = true;
-                    networkBehaviour.m_HasAuthority = false;
-                    networkBehaviour.m_IsClient = false;
-                    NetworkManager.Instance.AddObject(id, prefab);
+                    int id = AddObjectToNetwork(prefab);
                     spawnRPC.m_NetworkId = id;
                     SendRPC(spawnRPC, player);
 
-                    if (spawnRPC.m_PrefabIndex == -1)
+                    if (spawnRPC.m_PrefabIndex == -1) 
                     {
                         player.m_NetworkId = id;
                         NetworkPlayerConnectRPC connectRPC = new NetworkPlayerConnectRPC(player, -1);
@@ -346,32 +335,23 @@ public class NetworkServer : MonoBehaviour
 
                     networkBehaviour.m_Spawner = player.m_NetworkId;
 
+                    serverInfo.m_PrefabIndex = spawnRPC.m_PrefabIndex;
                     if (spawnRPC.m_RequestAuthority)
                         serverInfo.AddAuthority(player);
 
+                    NetworkAuthorizationRPC authRPC;
                     if (IsPlayerServer(player))
                     {
-                        // Sending to ourselves
-
-                        NetworkAuthorizationRPC authRPC = new NetworkAuthorizationRPC(
-                            true,
-                            (NetworkManager.Instance.m_Settings.m_NetworkType == ENetworkType.Mixed) ? true : false, // We might be server because we can mixed host
-                            spawnRPC.m_RequestAuthority,
-                            id
+                        authRPC = new NetworkAuthorizationRPC(
+                            true, (NetworkManager.Instance.m_Settings.m_NetworkType == ENetworkType.Mixed) ? true : false, spawnRPC.m_RequestAuthority, id
                         );
-                        SendRPC(authRPC, player);
                     } else
                     {
-                        // Sending to another client
-
-                        NetworkAuthorizationRPC authRPC = new NetworkAuthorizationRPC(
-                            true,
-                            false, // Other clients are definitely not server
-                            spawnRPC.m_RequestAuthority,
-                            id
+                        authRPC = new NetworkAuthorizationRPC(
+                            true, false, spawnRPC.m_RequestAuthority, id
                         );
-                        SendRPC(authRPC, player);
                     }
+                    SendRPC(authRPC, player);
                 }
                 break;
             case NetworkRPCType.RPC_LIB_DESTROY:
@@ -379,6 +359,7 @@ public class NetworkServer : MonoBehaviour
                     GameObject obj = NetworkManager.Instance.GetNetworkedObject(rpc.m_NetworkId);
                     if (PlayerHasAuthority(obj, player))
                     {
+                        OnNetworkObjectDestroyed(obj, player);
                         Destroy(obj);
                         SendRPCAll(rpc);
                     }
@@ -400,12 +381,36 @@ public class NetworkServer : MonoBehaviour
                 } break;
             case NetworkRPCType.RPC_LIB_DISCONNECTED:
                 {
-
+                    NetworkPlayerDisconnctRPC disconnctRPC = NetworkRPC.Parse<NetworkPlayerDisconnctRPC>(command);
+                    if (disconnctRPC.m_Player == player)
+                    {
+                        // Disconnection checks?
+                        KickPlayer(player, "Disconnected", NetworkDisconnectType.Request, true);
+                    }
+                    else
+                    {
+                        // Authoratative admin checks later : TODO
+                        KickPlayer(player, $"Kicked by: {player.m_Name}", NetworkDisconnectType.Kick, true);
+                    }
                 } break;
         }
     }
+    private int AddObjectToNetwork(GameObject obj)
+    {
+        NetworkBehaviour networkBehaviour = obj.GetComponent<NetworkBehaviour>();
 
-    public void KickPlayer(NetworkPlayer player, string reason, bool deleteObjects = false)
+        int id = UnityEngine.Random.Range(0, int.MaxValue);
+        obj.GetComponent<NetworkIdentity>().m_NetworkId = id;
+        networkBehaviour.m_IsServer = true;
+        networkBehaviour.m_HasAuthority = false;
+        networkBehaviour.m_IsClient = false;
+        networkBehaviour.m_Spawner = -1; // Server
+        NetworkManager.Instance.AddObject(id, obj);
+
+        return id;
+    }
+
+    public void KickPlayer(NetworkPlayer player, string reason, NetworkDisconnectType type = NetworkDisconnectType.Kick, bool deleteObjects = false)
     {
         if(player == null)
             return;
@@ -418,7 +423,7 @@ public class NetworkServer : MonoBehaviour
         if(networkBehaviour == null)
             return;
 
-        NetworkPlayerDisconnctRPC disconnectRPC = new NetworkPlayerDisconnctRPC(player, NetworkDisconnectType.Kick, reason, player.m_NetworkId);
+        NetworkPlayerDisconnctRPC disconnectRPC = new NetworkPlayerDisconnctRPC(player, type, reason, player.m_NetworkId);
         SendRPC(disconnectRPC, player);
 
         if(deleteObjects)
@@ -430,7 +435,7 @@ public class NetworkServer : MonoBehaviour
             }
         }
 
-        OnPlayerDisconnected(player, NetworkDisconnectType.Kick, reason);
+        OnPlayerDisconnected(player, type, reason);
         NetworkManager.Instance.RemovePlayer(player.m_Id);
     }
 
@@ -541,15 +546,65 @@ public class NetworkServer : MonoBehaviour
         Unknown
     }
 
+    /// <summary>
+    /// Initializes any networked objects that were already in the scene
+    /// </summary>
+    private void InitializeNetworkedObjects()
+    {
+        NetworkBehaviour[] networkObjects = FindObjectsOfType<NetworkBehaviour>();
+
+        foreach(NetworkBehaviour behaviour in networkObjects)
+        {
+            NetworkIdentity identity = behaviour.GetComponent<NetworkIdentity>();
+            if (identity == null)
+                continue;
+            if (NetworkManager.Instance.GetNetworkedObject(identity.m_NetworkId) != null)
+                continue;
+
+            AddObjectToNetwork(behaviour.gameObject);
+            NetworkObjectServerInfo serverInfo = behaviour.gameObject.AddComponent<NetworkObjectServerInfo>();
+            serverInfo.m_PrefabIndex = -2;
+            // Lets "spawn" the object on our side real fast
+
+            ELogger.Log($"Spawning networked object: {behaviour.gameObject.name}" , ELogger.LogType.Server);
+        }
+    }
+
     public virtual void OnServerStarted(string address, int port)
     {
         ELogger.Log($"Server started on: {address}:{port}", ELogger.LogType.Server);
         m_Status = NetworkServerStatus.Connected;
         StartCoroutine(ImportantFrameWorker());
         StartCoroutine(HeartbeatWorker());
+        InitializeNetworkedObjects();
         _ = OnReceiveFrame();
     }
 
+    /// <summary>
+    /// Called when an object is created on the network
+    /// </summary>
+    /// <param name="gameObject">The (server) game object that was created</param>
+    /// <param name="player">The client who requested the object, can be null if it is server</param>
+    public virtual void OnNetworkObjectCreated(GameObject gameObject, NetworkPlayer player)
+    {
+
+    }
+
+    /// <summary>
+    /// Called right after the object is destroyed on the server, but before it is destroyed on the clients
+    /// </summary>
+    /// <param name="gameObject">The object that was destroyed</param>
+    /// <param name="player">The player who requested the object be destroyed, can be null</param>
+    public void OnNetworkObjectDestroyed(GameObject gameObject, NetworkPlayer player)
+    {
+
+    }
+
+    /// <summary>
+    /// Called when the server is stopped, either by code or by Application.Quit()
+    /// </summary>
+    /// <param name="type">The type of server stop that happened</param>
+    /// <param name="reason">The reason the server was stopped</param>
     public virtual void OnServerStopped(NetworkServerStopType type, string reason)
     {
         m_Status = NetworkServerStatus.Stopped;
@@ -557,7 +612,7 @@ public class NetworkServer : MonoBehaviour
 
         foreach(NetworkPlayer player in NetworkManager.Instance.GetPlayers())
         {
-            KickPlayer(player, "Server Stopping", true);
+            KickPlayer(player, "Server Stopping", NetworkDisconnectType.LostConnection, true);
         }
 
         if(m_Client != null)
@@ -567,6 +622,10 @@ public class NetworkServer : MonoBehaviour
         }
     }
     
+    /// <summary>
+    /// Called when the server errors for any reason
+    /// </summary>
+    /// <param name="error">The error that has occured</param>
     public virtual void OnServerError(string error)
     {
         m_Status = NetworkServerStatus.Error;
@@ -574,11 +633,21 @@ public class NetworkServer : MonoBehaviour
         OnServerStopped(NetworkServerStopType.Errored, error);
     }
 
+    /// <summary>
+    /// Called when a player connects to the server
+    /// </summary>
+    /// <param name="player">The player that has connected</param>
     public virtual void OnPlayerConnected(NetworkPlayer player)
     {
         ELogger.Log($"A player has connected to the server: {player.m_Name}|{player.m_Id}", ELogger.LogType.Server);
     }
 
+    /// <summary>
+    /// Called when a player has disconnected from the server
+    /// </summary>
+    /// <param name="player">The player that was disconnected</param>
+    /// <param name="type">The type of disconnection it was</param>
+    /// <param name="reason">The reason the player was disconnected</param>
     public virtual void OnPlayerDisconnected(NetworkPlayer player, NetworkDisconnectType type, string reason)
     {
         ELogger.Log($"A player has disconnected from the server: {player.m_Name}|{type}|{reason}", ELogger.LogType.Server);

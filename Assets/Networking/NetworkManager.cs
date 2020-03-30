@@ -171,14 +171,14 @@ public class NetworkManager : MonoBehaviour
     /// Gets an object by the index, using the networked prefabs array
     /// </summary>
     /// <param name="index">The index of the object</param>
-    /// <returns>The object itself, or a exception if no object is found</returns>
+    /// <returns>The object itself, or null if no object is found</returns>
     public GameObject GetObjectByIndex(int index)
     {
         if (index == -1)
             return m_Settings.m_PlayerPrefab;
 
         if (index < 0 || index > m_Settings.m_NetworkPrefabs.Count - 1)
-            throw new System.Exception("[Manager] Index is not within the range of the prefab list");
+            return null; 
 
         return m_Settings.m_NetworkPrefabs[index];
     }
