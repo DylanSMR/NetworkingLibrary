@@ -140,6 +140,7 @@ public class NetworkFrame
         Handshake,
         Ping,
         Authentication,
-        RPC
+        RPC,
+        Heartbeat
     }
 }

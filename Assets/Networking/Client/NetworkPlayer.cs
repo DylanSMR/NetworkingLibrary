@@ -1,8 +1,6 @@
-﻿using System.Collections;
-using System.Collections.Generic;
-using System.Net;
-using UnityEngine;
+﻿using System;
 
+[Serializable]
 public class NetworkPlayer 
 {
     public string m_Name;

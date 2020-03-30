@@ -6,7 +6,7 @@ using UnityEngine;
 public class Player : NetworkBehaviour
 {
     private NetworkIdentity m_Identity;
-    private Camera camera;
+    private Camera m_Camera;
 
     public float m_Health = 100f;
     public Color m_Color = Color.black;
@@ -19,8 +19,8 @@ public class Player : NetworkBehaviour
     private void Start()
     {
         m_Identity = GetComponent<NetworkIdentity>();
-        camera = GetComponentInChildren<Camera>();
-        camera.gameObject.SetActive(false);
+        m_Camera = GetComponentInChildren<Camera>();
+        m_Camera.gameObject.SetActive(false);
     }
 
     public void UpdateColor(Color color)
@@ -34,7 +34,7 @@ public class Player : NetworkBehaviour
         base.OnAuthorityChanged(status);
 
         if(status)
-            camera.gameObject.SetActive(true);
+            m_Camera.gameObject.SetActive(true);
     }
 
     private void OnGUI()
@@ -96,18 +96,16 @@ public class Player : NetworkBehaviour
     /// <param name="content">The content of the rpc we received. See example below to understand more</param>
     public override void OnRPCCommand(string content)
     {
-        NetworkRPC rpc = NetworkRPC.FromString(content);
         base.OnRPCCommand(content);
+        NetworkRPC rpc = NetworkRPC.FromString(content);
+
 
         switch (rpc.m_Type)
         {
             case NetworkRPCType.RPC_CUSTOM_PLAYER:
                 {
-                    if (NetworkManager.Instance.m_NetworkType == NetworkManager.ENetworkType.Mixed)
-                        break; // We are sort of server, so we have most up to date value
-
                     NetworkPlayerRPC playerRPC = NetworkRPC.Parse<NetworkPlayerRPC>(content);
-                    UpdateColor(m_Color);
+                    UpdateColor(playerRPC.m_Color);
 
                     if(playerRPC.m_Health != -1)
                         m_Health = playerRPC.m_Health;

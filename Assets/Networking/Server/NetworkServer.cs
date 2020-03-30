@@ -15,6 +15,7 @@ public class NetworkServer : MonoBehaviour
 
     // Server Fields
     private string m_Password;
+    private NetworkServerStatus m_Status = NetworkServerStatus.Connecting;
     /// <summary>
     /// A list of users who are authorized and can use the authorized frames
     /// </summary>
@@ -26,13 +27,46 @@ public class NetworkServer : MonoBehaviour
     {
         if (Instance != null)
         {
-            Debug.LogWarning("[NetworkServer] A new network server was created, yet one already exists.");
+            Debug.LogWarning("[Server] A new network server was created, yet one already exists.");
             return; // We want to use the already existing network server
         }
         Instance = this;
 
         m_AuthorizedUsers = new List<string>();
         m_IPMap = new Dictionary<string, IPEndPoint>();
+        m_Heartbeats = new Dictionary<string, int>();
+    }
+
+    public Dictionary<string, int> m_Heartbeats;
+
+    private IEnumerator HeartbeatWorker()
+    {
+        while(m_Status == NetworkServerStatus.Connected)
+        {
+            foreach(var networkPair in NetworkManager.Instance.GetPlayers())
+            {
+                NetworkPlayer player = NetworkManager.Instance.GetPlayer(networkPair.Key);
+
+                if(!m_Heartbeats.ContainsKey(player.m_Id))
+                {
+                    m_Heartbeats.Add(player.m_Id, 0);
+                    continue;
+                }
+                if(m_Heartbeats[player.m_Id] + 1 == 3)
+                {
+                    ELogger.Log($"Player {player.m_Name} lost connection to server", ELogger.LogType.Server);
+                    // Disconnect player here
+                    continue;
+                }
+
+                m_Heartbeats[player.m_Id] += 1;
+
+                NetworkFrame heartFrame = new NetworkFrame(NetworkFrame.NetworkFrameType.Heartbeat, "server");
+                SendFrame(heartFrame, player);
+            }
+
+            yield return new WaitForSeconds(1);
+        }
     }
 
     /// <summary>
@@ -49,14 +83,19 @@ public class NetworkServer : MonoBehaviour
             m_Client = new UdpClient();
             m_Client.Connect(address, port);
             ELogger.Log($"Connecting to proxy at {address}:{port}", ELogger.LogType.Server);
-            // Attempt connect to proxy
+            StartCoroutine(ProxyConnectWorker(address, port));
         }
         else
         {
             m_Client = new UdpClient(port); // Host server
-            ELogger.Log($"Hosting server on port {port}", ELogger.LogType.Server);
-            _ = OnReceiveFrame();
+            OnServerStarted(port);
         }
+    }
+
+    private IEnumerator ProxyConnectWorker(string address, int port)
+    {
+        OnServerStarted(port);
+        return null;
     }
 
     /// <summary>
@@ -244,6 +283,8 @@ public class NetworkServer : MonoBehaviour
                     if (spawnRPC.m_PrefabIndex == -1)
                     {
                         player.m_NetworkId = id;
+                        NetworkPlayerConnectRPC connectRPC = new NetworkPlayerConnectRPC(player, -1);
+                        SendRPCAll(connectRPC);
                     }
 
                     networkBehaviour.m_Spawner = player.m_NetworkId;
@@ -300,6 +341,9 @@ public class NetworkServer : MonoBehaviour
                         SendRPCAll(transformRPC); // Probably should add a exclude to this so we dont send it to ourselves? Idk
                     }
                 } break;
+
+
+
             case NetworkRPCType.RPC_CUSTOM_PLAYER:
                 {
                     NetworkPlayerRPC playerRPC = NetworkRPC.Parse<NetworkPlayerRPC>(command);
@@ -407,5 +451,39 @@ public class NetworkServer : MonoBehaviour
     {
         byte[] bytes = frame.ToBytes();
         m_Client.Send(bytes, bytes.Length, m_IPMap[player.m_Id]);
+    }
+
+    public enum NetworkServerStatus
+    {
+        Connected,
+        Connecting,
+        Disconnected,
+        Error
+    }
+
+    public virtual void OnServerStarted(int port)
+    {
+        ELogger.Log($"Server started on port: {port}", ELogger.LogType.Server);
+        _ = OnReceiveFrame();
+    }
+
+    public virtual void OnServerStopped()
+    {
+
+    }
+    
+    public virtual void OnServerError()
+    {
+
+    }
+
+    public virtual void OnPlayerConnected(NetworkPlayer player)
+    {
+
+    }
+
+    public virtual void OnPlayerDisconnected(NetworkPlayer player, NetworkDisconnectType type, string reason)
+    {
+
     }
 }

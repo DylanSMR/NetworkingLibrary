@@ -1,4 +1,5 @@
-﻿using System.Collections;
+﻿using System;
+using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 
@@ -25,6 +26,16 @@ public class NetworkBehaviour : MonoBehaviour
     }
 
     public virtual void OnAuthorityChanged(bool status)
+    {
+
+    }
+
+    public virtual void OnPlayerJoined(NetworkPlayer m_Player)
+    {
+        
+    }
+
+    public virtual void OnPlayerDisconnected(NetworkPlayer player, NetworkDisconnectType type, string reason)
     {
 
     }

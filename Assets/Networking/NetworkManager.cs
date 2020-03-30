@@ -80,7 +80,6 @@ public class NetworkManager : MonoBehaviour
     {
         if (!m_GameObjects.ContainsKey(id))
         {
-            //Debug.LogWarning($"[NetworkManager] A object with an id of {id} was searched for, but did not exist in storage");
             return null; 
         }    
 

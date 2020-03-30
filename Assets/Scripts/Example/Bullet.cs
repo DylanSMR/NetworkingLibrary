@@ -1,5 +1,6 @@
 ﻿using System.Collections;
 using System.Collections.Generic;
+using System.Threading.Tasks;
 using UnityEngine;
 
 public class Bullet : NetworkBehaviour
@@ -17,13 +18,16 @@ public class Bullet : NetworkBehaviour
 
         GameObject obj = NetworkManager.Instance.GetNetworkedObject(m_Spawner);
         if (obj == null)
+        {
             return;
+        }
         m_player = obj.GetComponent<Player>();
-        if(m_player == null)
+        if (m_player == null)
         {
             NetworkServer.Instance.DestroyObject(GetComponent<NetworkIdentity>().m_NetworkId);
             return;
         }
+
         m_Body = GetComponent<Rigidbody>();
         if (m_Body == null)
         {
@@ -35,6 +39,7 @@ public class Bullet : NetworkBehaviour
         transform.position = (gun.transform.position + ( gun.transform.forward / 2.5f ));
         transform.rotation = gun.transform.rotation;
         m_Started = Time.time + m_Lifetime;
+        UpdateTransform();
     }
 
     private void Update()
@@ -49,9 +54,17 @@ public class Bullet : NetworkBehaviour
         }
 
         m_Body.velocity += transform.forward * Time.deltaTime * m_Speed;
+    }
 
-        NetworkTransformRPC rpc = new NetworkTransformRPC(transform, GetComponent<NetworkIdentity>().m_NetworkId);
-        NetworkServer.Instance.SendRPCAll(rpc);
+    private IEnumerator UpdateTransform()
+    {
+        while(true)
+        {
+            NetworkTransformRPC rpc = new NetworkTransformRPC(transform, GetComponent<NetworkIdentity>().m_NetworkId);
+            NetworkServer.Instance.SendRPCAll(rpc);
+
+            yield return new WaitForSeconds(60 / 1000);
+        }
     }
 
     private void OnCollisionEnter(Collision collision)

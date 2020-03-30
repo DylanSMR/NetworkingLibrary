@@ -37,7 +37,7 @@ public class NetworkClient : MonoBehaviour
     {
         if(Instance != null)
         {
-            Debug.LogWarning("[NetworkClient] A new network client was created, yet one already exists.");
+            Debug.LogWarning("[Client] A new network client was created, yet one already exists.");
             return; // We want to use the already existing network client
         }
         Instance = this;
@@ -287,9 +287,50 @@ public class NetworkClient : MonoBehaviour
                         break; // We are sort of server, so we have most up to date value
 
                     NetworkTransformRPC transformRPC = NetworkRPC.Parse<NetworkTransformRPC>(content);
-                    transform.position = transformRPC.m_Position;
-                    transform.eulerAngles = transformRPC.m_Rotation;
-                    transform.localScale = transformRPC.m_Scale;
+                    GameObject obj = NetworkManager.Instance.GetNetworkedObject(rpc.m_NetworkId);
+                    if (obj != null)
+                    {
+                        obj.transform.position = transformRPC.m_Position;
+                        obj.transform.eulerAngles = transformRPC.m_Rotation;
+                        obj.transform.localScale = transformRPC.m_Scale;
+                    }
+                } break;
+            case NetworkRPCType.RPC_LIB_CONNECTED:
+                {
+                    NetworkPlayerConnectRPC connectRPC = NetworkRPC.Parse<NetworkPlayerConnectRPC>(content);
+                    ELogger.Log($"Player Connected: {connectRPC.m_Player.m_Name}", ELogger.LogType.Client);
+                    NetworkManager.Instance.AddPlayer(connectRPC.m_Player.m_Id, connectRPC.m_Player);
+
+                    foreach(var networkPair in NetworkManager.Instance.GetNetworkedObjects())
+                    {
+                        if(networkPair.Value != null)
+                        {
+                            NetworkBehaviour networkBehaviour = networkPair.Value.GetComponent<NetworkBehaviour>();
+                            if (networkBehaviour != null)
+                                networkBehaviour.OnPlayerJoined(connectRPC.m_Player);
+                        }
+                    }
+                } break;
+            case NetworkRPCType.RPC_LIB_DISCONNECTED:
+                {
+                    NetworkPlayerDisconnctRPC disconnectRPC = NetworkRPC.Parse<NetworkPlayerDisconnctRPC>(content);
+                    ELogger.Log($"Player Disonnected: {disconnectRPC.m_Player.m_Name}", ELogger.LogType.Client);
+                    NetworkManager.Instance.RemovePlayer(disconnectRPC.m_Player.m_Id);
+
+                    foreach (var networkPair in NetworkManager.Instance.GetNetworkedObjects())
+                    {
+                        if (networkPair.Value != null)
+                        {
+                            NetworkBehaviour networkBehaviour = networkPair.Value.GetComponent<NetworkBehaviour>();
+                            if (networkBehaviour != null)
+                                networkBehaviour.OnPlayerDisconnected(disconnectRPC.m_Player, disconnectRPC.m_DisconnectType, disconnectRPC.m_Reason);
+                        }
+                    }
+
+                    if (disconnectRPC.m_Player.m_Id == GetUniqueIndentifier())
+                    {
+                        // We disconnected
+                    }
                 } break;
             default: // This can be handled on behaviour/object
                 {

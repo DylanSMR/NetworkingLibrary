@@ -128,6 +128,40 @@ public class NetworkPlayerRPC : NetworkRPC
     }  
 }
 
+[Serializable]
+public class NetworkPlayerConnectRPC : NetworkRPC
+{
+    public NetworkPlayer m_Player;
+
+    public NetworkPlayerConnectRPC(NetworkPlayer player, int id) : base(id, NetworkRPCType.RPC_LIB_CONNECTED)
+    {
+        m_Player = player;
+    }
+}
+
+[Serializable]
+public class NetworkPlayerDisconnctRPC : NetworkRPC
+{
+    public NetworkPlayer m_Player;
+    public NetworkDisconnectType m_DisconnectType;
+    public string m_Reason;
+
+    public NetworkPlayerDisconnctRPC(NetworkPlayer player, NetworkDisconnectType type, string reason, int id) : base(id, NetworkRPCType.RPC_LIB_DISCONNECTED)
+    {
+        m_Player = player;
+        m_DisconnectType = type;
+        m_Reason = reason;
+    }
+}
+
+public enum NetworkDisconnectType
+{ 
+    Kick,
+    Ban,
+    LostConnection
+}
+
+
 public enum NetworkRPCType
 {
     RPC_LIB_INVALID,
@@ -135,6 +169,8 @@ public enum NetworkRPCType
     RPC_LIB_DESTROY,
     RPC_LIB_OBJECT_NETAUTH,
     RPC_LIB_TRANSFORM,
+    RPC_LIB_CONNECTED,
+    RPC_LIB_DISCONNECTED,
 
     RPC_CUSTOM_PLAYER
 }
