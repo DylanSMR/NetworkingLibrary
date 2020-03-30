@@ -21,6 +21,10 @@ public class NetworkRPC
     /// By default set to RPC_INVALID
     /// </summary>
     public NetworkRPCType m_Type;
+    /// <summary>
+    /// Whether the RPC absolutely has to reach the target or things could go very wrong
+    /// </summary>
+    public bool m_Important = false;
 
     /// <summary>
     /// Creates a new default NetworkRPC

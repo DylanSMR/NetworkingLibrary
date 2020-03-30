@@ -3,36 +3,11 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
+using static NetworkServerSettings;
 
 public class NetworkManager : MonoBehaviour
 {
-    [Header("Server Settings")]
-    [Tooltip("The address of the server that is going to be connected to")]
-    public string m_ServerAddress = "127.0.0.1";
-    [Tooltip("The port of the server that is going to be connected to")]
-    public int m_ServerPort = 58120;
-    [Tooltip("The password of the server that is going to be connected to")]
-    public string m_ServerPassword = "!kappa3!";
-
-    [Header("Proxy Settings")]
-    [Tooltip("The address of the proxy that is going to be connected to")]
-    public string m_ProxyAddress;
-    [Tooltip("The port of the proxy that is going to be connected to")]
-    public int m_ProxyPort;
-    [Tooltip("The password of the proxy that is going to be connected to")]
-    public string m_ProxyPassword;
-
-    [Header("Network Settings")]
-    [Tooltip("How many players can be connected to the server at one time")]
-    public int m_MaxPlayers;
-    [Tooltip("How the server is being hosted (being connected via proxy or by itself)")]
-    public ENetworkConnectionType m_ConnectionType;
-    [Tooltip("Is the unity process going to be a client, a server, or both")]
-    public ENetworkType m_NetworkType;
-    [Tooltip("The available prefabs for networking")]
-    public List<GameObject> m_NetworkPrefabs;
-    [Tooltip("The prefab that will be spawned when a player connects")]
-    public GameObject m_PlayerPrefab;
+    public NetworkServerSettings m_Settings;
 
     /// <summary>
     /// A static instance to the always active NetworkManager object
@@ -48,16 +23,24 @@ public class NetworkManager : MonoBehaviour
         m_Players = new Dictionary<string, NetworkPlayer>();
         m_GameObjects = new Dictionary<int, GameObject>();
 
-        if (m_NetworkType == ENetworkType.Server || m_NetworkType == ENetworkType.Mixed)
+        if(m_Settings.m_NetworkType == ENetworkType.Client)
+            if (m_Server != null)
+                Destroy(m_Server);
+
+        if (m_Settings.m_NetworkType == ENetworkType.Server)
+            if (m_Client != null)
+                Destroy(m_Client);
+
+        if (m_Settings.m_NetworkType == ENetworkType.Server || m_Settings.m_NetworkType == ENetworkType.Mixed)
             if(m_Server == null)
                 m_Server = gameObject.AddComponent<NetworkServer>();
 
-        if (m_NetworkType == ENetworkType.Client || m_NetworkType == ENetworkType.Mixed)
+        if (m_Settings.m_NetworkType == ENetworkType.Client || m_Settings.m_NetworkType == ENetworkType.Mixed)
             m_Client = gameObject.AddComponent<NetworkClient>();
 
-        if (m_NetworkType == ENetworkType.Server || m_NetworkType == ENetworkType.Mixed)
+        if (m_Settings.m_NetworkType == ENetworkType.Server || m_Settings.m_NetworkType == ENetworkType.Mixed)
             Host();
-        if (m_NetworkType == ENetworkType.Client || m_NetworkType == ENetworkType.Mixed)
+        if (m_Settings.m_NetworkType == ENetworkType.Client || m_Settings.m_NetworkType == ENetworkType.Mixed)
             Connect("asd");
     }
 
@@ -170,13 +153,13 @@ public class NetworkManager : MonoBehaviour
             throw new System.Exception($"[Manager] The object passed into GetIndexByObject cannot be null");
 
         int index = -2;
-        for(int i = 0; i < m_NetworkPrefabs.Count; i++)
+        for(int i = 0; i < m_Settings.m_NetworkPrefabs.Count; i++)
         {
-            if (m_NetworkPrefabs[i] == obj)
+            if (m_Settings.m_NetworkPrefabs[i] == obj)
                 index = i;
         }
 
-        if (obj == m_PlayerPrefab)
+        if (obj == m_Settings.m_PlayerPrefab)
             index = -1;
         if (index == -2)
             throw new System.Exception($"[Manager] The object {obj} is not a verified network object! Please add it to the network prefab list.");
@@ -192,12 +175,12 @@ public class NetworkManager : MonoBehaviour
     public GameObject GetObjectByIndex(int index)
     {
         if (index == -1)
-            return m_PlayerPrefab;
+            return m_Settings.m_PlayerPrefab;
 
-        if (index < 0 || index > m_NetworkPrefabs.Count - 1)
+        if (index < 0 || index > m_Settings.m_NetworkPrefabs.Count - 1)
             throw new System.Exception("[Manager] Index is not within the range of the prefab list");
 
-        return m_NetworkPrefabs[index];
+        return m_Settings.m_NetworkPrefabs[index];
     }
 
     private void Awake()
@@ -215,7 +198,7 @@ public class NetworkManager : MonoBehaviour
     /// Starts hosting a server with the editor specified address, port and password
     /// </summary>
     public void Host()
-        => Host(m_ServerAddress, m_ServerPort, m_ServerPassword);
+        => Host(m_Settings.m_ServerAddress, m_Settings.m_ServerPort, m_Settings.m_ServerPassword);
 
     /// <summary>
     /// Starts hosting a server given a address, port, and password to host it with
@@ -233,7 +216,7 @@ public class NetworkManager : MonoBehaviour
     /// </summary>
     /// <param name="password">The password required for the server. Leave blank if no password is required</param>
     public void Connect(string password = "")
-       => Connect(m_ServerAddress, m_ServerPort, password);
+       => Connect(m_Settings.m_ServerAddress, m_Settings.m_ServerPort, password);
 
     /// <summary>
     /// Connect to a server with a custom address and port (proxy/server)
@@ -244,18 +227,5 @@ public class NetworkManager : MonoBehaviour
     public void Connect(string serverAddress, int serverPort, string password = "")
     {
         m_Client.Connect(serverAddress, serverPort, password);
-    }
-
-    public enum ENetworkType
-    {
-        Server,
-        Client,
-        Mixed
-    }
-
-    public enum ENetworkConnectionType
-    {
-        Server,
-        Proxy
     }
 }

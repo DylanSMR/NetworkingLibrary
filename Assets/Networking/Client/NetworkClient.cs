@@ -2,11 +2,12 @@
 using System.Collections;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Linq;
 using System.Net;
 using System.Net.Sockets;
 using System.Threading.Tasks;
 using UnityEngine;
-
+using static NetworkServerSettings;
 using Debug = UnityEngine.Debug; // Hmmm
 
 /// <summary>
@@ -16,8 +17,8 @@ public class NetworkClient : MonoBehaviour
 {
     // Networking Fields
     private UdpClient m_Client;
-    private string m_Address;
     public static NetworkClient Instance;
+    private int m_FrameCount;
     /// <summary>
     /// A integer that represents how many times we have tried to connect to the server/proxy
     /// </summary>
@@ -28,6 +29,8 @@ public class NetworkClient : MonoBehaviour
     public NetworkClientStatus m_Status = NetworkClientStatus.Disconnected;
 
     private int randomNumber = 0;
+
+    private Dictionary<ImportantFrameHolder, float> m_ImportantFrames;
 
     // Ping Fields
     public float m_LastPing { get; private set; } = -1;
@@ -41,9 +44,10 @@ public class NetworkClient : MonoBehaviour
             return; // We want to use the already existing network client
         }
         Instance = this;
+        m_ImportantFrames = new Dictionary<ImportantFrameHolder, float>();
         randomNumber = UnityEngine.Random.Range(0, 100);
     }
-
+    
     /// <summary>
     /// Returns a unique identifier only used to identify network packets
     /// TODO: Make this unique as in only one client can have it
@@ -70,6 +74,30 @@ public class NetworkClient : MonoBehaviour
     {
         m_Client.Close();
         m_Client.Dispose();
+    }
+
+    public int m_ServerHeartbeats = 0;
+
+    private IEnumerator HeartbeatWorker()
+    {
+        while (m_Status == NetworkClientStatus.Connected)
+        {
+            foreach (var player in NetworkManager.Instance.GetPlayers())
+            {
+                if (m_ServerHeartbeats + 1 == 3)
+                {
+                    ELogger.Log($"Lost connection to server", ELogger.LogType.Server);
+                    // Cleanup
+                    continue;
+                }
+
+                m_ServerHeartbeats++;
+                NetworkFrame heartFrame = new NetworkFrame(NetworkFrame.NetworkFrameType.Heartbeat, GetUniqueIndentifier());
+                SendFrame(heartFrame);
+            }
+
+            yield return new WaitForSeconds(1);
+        }
     }
 
     /// <summary>
@@ -136,6 +164,61 @@ public class NetworkClient : MonoBehaviour
         SendFrame(handshake);
     }
 
+    private class ImportantFrameHolder
+    {
+        public NetworkFrame m_Frame;
+        public int m_Tries = 0;
+    }
+    private IEnumerator ImportantFrameWorker()
+    {
+        while(m_Status == NetworkClientStatus.Connected)
+        {
+            if (m_ImportantFrames.Count > 0)
+            {
+                Dictionary<ImportantFrameHolder, float> newPairs = new Dictionary<ImportantFrameHolder, float>();
+                foreach (var importantPair in m_ImportantFrames.ToDictionary(entry => entry.Key, entry => entry.Value))
+                {
+                    NetworkFrame frame = importantPair.Key.m_Frame;
+                    if (importantPair.Key.m_Tries > 4) 
+                    {
+                        // Cry? Idk what to do if server doesnt ack our frame, maybe just disconnected and cry
+                        continue;
+                    }
+                    if (importantPair.Value + 2.0f > Time.time)
+                    {
+                        // This frame has expired, we assume its invalid and send it again
+                        importantPair.Key.m_Tries++;
+                        newPairs.Add(importantPair.Key, Time.time + 2f);
+                        SendFrame(frame);
+                        continue;
+                    }
+                }
+                m_ImportantFrames = newPairs;
+            }
+
+            yield return new WaitForSeconds(1);
+
+            if (m_ImportantFrames.Count > 0)
+            {
+                Dictionary<ImportantFrameHolder, float> newPairs = new Dictionary<ImportantFrameHolder, float>();
+                foreach (var importantPair in m_ImportantFrames)
+                {
+                    if(importantPair.Value + 2.0f > Time.time)
+                    {
+                        // This frame has expired, we assume its invalid and send it again
+                        ELogger.Log("The server has missed one of our frames: ", ELogger.LogType.Client);
+                        SendFrame(importantPair.Key.m_Frame);
+                        continue;
+                    }
+                    newPairs.Add(importantPair.Key, importantPair.Value);
+                }
+                m_ImportantFrames = newPairs;
+            }
+
+            yield return new WaitForSeconds(1);
+        }
+    }
+
     /// <summary>
     /// Sends a ping request to the server to calculate our ping
     /// </summary>
@@ -157,13 +240,15 @@ public class NetworkClient : MonoBehaviour
     {
         UdpReceiveResult result = await m_Client.ReceiveAsync();
         NetworkFrame frame = NetworkFrame.ReadFromBytes(result.Buffer);
+        if (frame.m_Important)
+        {
+            NetworkFrame importantFrame = new NetworkFrame(NetworkFrame.NetworkFrameType.Acknowledged, GetUniqueIndentifier());
+            importantFrame.m_FrameId = frame.m_FrameId;
+            SendFrame(importantFrame);
+        }
 
         switch (frame.m_Type)
         {
-            case NetworkFrame.NetworkFrameType.Handshake:
-                {
-                    
-                } break;
             case NetworkFrame.NetworkFrameType.Ping: 
                 {
                     if(m_Stopwatch != null)
@@ -183,6 +268,8 @@ public class NetworkClient : MonoBehaviour
 
                         SendHandshake();
                         StartCoroutine(PingChecker());
+                        StartCoroutine(ImportantFrameWorker());
+                        StartCoroutine(HeartbeatWorker());
                     } else
                     {
                         m_Status = NetworkClientStatus.Error;
@@ -208,6 +295,22 @@ public class NetworkClient : MonoBehaviour
                 {
                     NetworkRPCFrame rpcFrame = NetworkFrame.Parse<NetworkRPCFrame>(result.Buffer);
                     OnRPCCommand(rpcFrame.m_RPC);
+                } break;
+            case NetworkFrame.NetworkFrameType.Heartbeat:
+                {
+                    m_ServerHeartbeats = 0;
+                } break;
+            case NetworkFrame.NetworkFrameType.Acknowledged:
+                {
+                    Dictionary<ImportantFrameHolder, float> importanteFrames = new Dictionary<ImportantFrameHolder, float>();
+                    foreach (var importanteFrame in m_ImportantFrames)
+                    {
+                        if (importanteFrame.Key.m_Frame.m_FrameId == frame.m_FrameId)
+                            continue;
+
+                        importanteFrames.Add(importanteFrame.Key, importanteFrame.Value);
+                    }
+                    m_ImportantFrames = importanteFrames;
                 } break;
         }
 
@@ -240,15 +343,12 @@ public class NetworkClient : MonoBehaviour
         {
             case NetworkRPCType.RPC_LIB_SPAWN: 
                 {
-                    if (NetworkManager.Instance.m_NetworkType == NetworkManager.ENetworkType.Mixed)
+                    if (NetworkManager.Instance.m_Settings.m_NetworkType == ENetworkType.Mixed)
                         break; // We already have it spawned for us
 
                     NetworkSpawnRPC spawnRPC = NetworkRPC.Parse<NetworkSpawnRPC>(content);
                     if(NetworkManager.Instance.GetNetworkedObject(spawnRPC.m_NetworkId) != null)
-                    {
-                        Debug.LogWarning("[Client] Asked to spawn prefab we already have -> " + spawnRPC.m_NetworkId);
                         break;
-                    }
 
                     GameObject spawnPrefab = NetworkManager.Instance.GetObjectByIndex(spawnRPC.m_PrefabIndex);
                     GameObject prefab = Instantiate(spawnPrefab);
@@ -282,7 +382,7 @@ public class NetworkClient : MonoBehaviour
                 } break;
             case NetworkRPCType.RPC_LIB_TRANSFORM:
                 {
-                    if (NetworkManager.Instance.m_NetworkType == NetworkManager.ENetworkType.Mixed)
+                    if (NetworkManager.Instance.m_Settings.m_NetworkType == ENetworkType.Mixed)
                         break; // We are sort of server, so we have most up to date value
 
                     NetworkTransformRPC transformRPC = NetworkRPC.Parse<NetworkTransformRPC>(content);
@@ -327,8 +427,10 @@ public class NetworkClient : MonoBehaviour
 
                     if (disconnectRPC.m_Player.m_Id == GetUniqueIndentifier())
                     {
-                        ELogger.Log($"We were disconnected for reason '{disconnectRPC.m_Reason}' with type {disconnectRPC.m_Type}", ELogger.LogType.Client);
-                    } else
+                        ELogger.Log($"We were disconnected for reason '{disconnectRPC.m_Reason}' with type {disconnectRPC.m_Type}|{disconnectRPC.m_DisconnectType}", ELogger.LogType.Client);
+                        UnityEditor.EditorApplication.isPlaying = false;
+                    }
+                    else
                     {
                         ELogger.Log($"Player Disonnected: {disconnectRPC.m_Player.m_Name}", ELogger.LogType.Client);
                     }
@@ -355,6 +457,7 @@ public class NetworkClient : MonoBehaviour
     public void SendRPC(NetworkRPC rpc)
     {
         NetworkRPCFrame networkRPCFrame = new NetworkRPCFrame(rpc.ToString(), GetUniqueIndentifier());
+        networkRPCFrame.m_Important = rpc.m_Important;
         SendFrame(networkRPCFrame);
     }
 
@@ -366,7 +469,18 @@ public class NetworkClient : MonoBehaviour
     {
         frame.m_SenderId = GetUniqueIndentifier();
         frame.m_TargetId = "server";
+        if(frame.m_FrameId == -1)
+            frame.m_FrameId = m_FrameCount + 1;
 
+        if(frame.m_Important)
+        {
+            m_ImportantFrames.Add(new ImportantFrameHolder()
+            {
+                m_Frame = frame
+            }, Time.time);
+        }
+
+        m_FrameCount++;
         byte[] bytes = frame.ToBytes();
         m_Client.Send(bytes, bytes.Length);
     }

@@ -15,6 +15,10 @@ public class NetworkFrame
     /// </summary>
     public NetworkFrameType m_Type;
     /// <summary>
+    /// The id of this frame, normally in sequential order
+    /// </summary>
+    public int m_FrameId = -1;
+    /// <summary>
     /// The unique identifier of the target this represents (for now HWID, but later a generated ID such as steams)
     /// </summary>
     public string m_TargetId;
@@ -22,6 +26,10 @@ public class NetworkFrame
     /// The unique identifier of whoever is sending this frame
     /// </summary>
     public string m_SenderId;
+    /// <summary>
+    /// Whether the frame is absolutely necessary to have been received by the server/client
+    /// </summary>
+    public bool m_Important;
 
     /// <summary>
     /// Creates a networked frame to send to the server (m_TargetId will be filled in automatically)
@@ -98,6 +106,7 @@ public class NetworkFrame
         Ping,
         Authentication,
         RPC,
-        Heartbeat
+        Heartbeat,
+        Acknowledged
     }
 }

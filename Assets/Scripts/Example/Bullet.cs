@@ -10,6 +10,7 @@ public class Bullet : NetworkBehaviour
     public float m_Speed = 10f;
     public float m_Lifetime = 3f;
     private float m_Started = 0f;
+    private bool m_HasCollided = false;
 
     private void Start()
     {
@@ -69,7 +70,7 @@ public class Bullet : NetworkBehaviour
 
     private void OnCollisionEnter(Collision collision)
     {
-        if (!m_IsServer)
+        if (!m_IsServer || m_HasCollided)
             return;
 
         if (NetworkServer.Instance == null) // If the check above didnt work, if we dont have a network server quit
@@ -88,9 +89,11 @@ public class Bullet : NetworkBehaviour
             NetworkServer.Instance.DestroyNetworkedObject(GetComponent<NetworkIdentity>().m_NetworkId);
             return;
         }
+        m_HasCollided = true;
         player.m_Health -= 25;
 
         NetworkPlayerRPC rpc = new NetworkPlayerRPC(player.m_Color, player.m_Health, player.GetComponent<NetworkIdentity>().m_NetworkId); ; // Health is -1 as it doesnt matter we we set it, only what the server sets
+        rpc.m_Important = true;
         NetworkServer.Instance.SendRPCAll(rpc);
         NetworkServer.Instance.DestroyNetworkedObject(GetComponent<NetworkIdentity>().m_NetworkId);
     }

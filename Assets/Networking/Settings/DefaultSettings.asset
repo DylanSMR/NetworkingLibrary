@@ -1,0 +1,27 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 6d25e9848eaeb544da3cba38ee5d32c2, type: 3}
+  m_Name: DefaultSettings
+  m_EditorClassIdentifier: 
+  m_ServerAddress: 127.0.0.1
+  m_ServerPort: 58120
+  m_ServerPassword: '!kappa3!'
+  m_ProxyAddress: 
+  m_ProxyPort: 0
+  m_ProxyPassword: 
+  m_MaxPlayers: 2
+  m_ConnectionType: 0
+  m_NetworkType: 2
+  m_NetworkPrefabs:
+  - {fileID: 4729622511790012536, guid: 84c23e79704af194a9b851191c028276, type: 3}
+  m_PlayerPrefab: {fileID: 7413577645917686598, guid: 03a6ac2e85230e14eb25ae3aff167a28,
+    type: 3}

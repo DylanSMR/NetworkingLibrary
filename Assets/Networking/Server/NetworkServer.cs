@@ -1,21 +1,24 @@
 ﻿using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Linq;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
 using System.Threading.Tasks;
 using UnityEngine;
+using static NetworkServerSettings;
 
 public class NetworkServer : MonoBehaviour
 {
     // Networking Fields
     private UdpClient m_Client;
     public static NetworkServer Instance;
+    private int m_FrameCount = 0;
 
     // Server Fields
     private string m_Password;
-    private NetworkServerStatus m_Status = NetworkServerStatus.Connecting;
+    public NetworkServerStatus m_Status = NetworkServerStatus.Connecting;
     /// <summary>
     /// A list of users who are authorized and can use the authorized frames
     /// </summary>
@@ -35,6 +38,7 @@ public class NetworkServer : MonoBehaviour
         m_AuthorizedUsers = new List<string>();
         m_IPMap = new Dictionary<string, IPEndPoint>();
         m_Heartbeats = new Dictionary<string, int>();
+        m_ImportantFrames = new Dictionary<ImportantFrameHolder, float>();
     }
 
     public Dictionary<string, int> m_Heartbeats;
@@ -53,7 +57,7 @@ public class NetworkServer : MonoBehaviour
                 if(m_Heartbeats[player.m_Id] + 1 == 3)
                 {
                     ELogger.Log($"Player {player.m_Name} lost connection to server", ELogger.LogType.Server);
-                    // Disconnect player here
+                    KickPlayer(player, "Lost Connection", true);
                     continue;
                 }
 
@@ -76,7 +80,7 @@ public class NetworkServer : MonoBehaviour
     public void Host(string address, int port, string password)
     {
         m_Password = password;
-        if (NetworkManager.Instance.m_ConnectionType == NetworkManager.ENetworkConnectionType.Proxy)
+        if (NetworkManager.Instance.m_Settings.m_ConnectionType == ENetworkConnectionType.Proxy)
         {
             m_Client = new UdpClient();
             m_Client.Connect(address, port);
@@ -96,6 +100,46 @@ public class NetworkServer : MonoBehaviour
         return null;
     }
 
+    private Dictionary<ImportantFrameHolder, float> m_ImportantFrames;
+    private class ImportantFrameHolder
+    {
+        public NetworkFrame m_Frame;
+        public NetworkPlayer m_Player;
+        public int m_Tries = 0;
+    }
+
+    private IEnumerator ImportantFrameWorker()
+    {
+        while (m_Status == NetworkServerStatus.Connected)
+        {
+            if (m_ImportantFrames.Count > 0)
+            {
+                Dictionary<ImportantFrameHolder, float> newPairs = new Dictionary<ImportantFrameHolder, float>();
+                foreach (var importantPair in m_ImportantFrames.ToDictionary(entry => entry.Key, entry => entry.Value))
+                {
+                    NetworkFrame frame = importantPair.Key.m_Frame;
+                    NetworkPlayer player = importantPair.Key.m_Player;
+                    if(importantPair.Key.m_Tries > 4) // They have had 4 chances to ack this frame, lets just kick them and assume they cant hear us
+                    {
+                        KickPlayer(player, "Lost Connection", true);
+                        continue;
+                    }
+                    if (importantPair.Value + 2.0f > Time.time)
+                    {
+                        // This frame has expired, we assume its invalid and send it agai
+                        importantPair.Key.m_Tries++;
+                        newPairs.Add(importantPair.Key, Time.time + 2f);
+                        SendFrame(frame, player);
+                        continue;
+                    }
+                }
+                m_ImportantFrames = newPairs;
+            }
+
+            yield return new WaitForSeconds(1);
+        }
+    }
+
     /// <summary>
     /// Called when the server receives a networked frame
     /// </summary>
@@ -105,6 +149,12 @@ public class NetworkServer : MonoBehaviour
         UdpReceiveResult result = await m_Client.ReceiveAsync();
         NetworkFrame frame = NetworkFrame.ReadFromBytes(result.Buffer);
         NetworkPlayer player = NetworkManager.Instance.GetPlayer(frame.m_SenderId);
+        if(frame.m_Important && player != null)
+        {
+            NetworkFrame importantFrame = new NetworkFrame(NetworkFrame.NetworkFrameType.Acknowledged, "server");
+            importantFrame.m_FrameId = frame.m_FrameId;
+            SendFrame(importantFrame, player);
+        }
 
         switch(frame.m_Type)
         {
@@ -132,7 +182,8 @@ public class NetworkServer : MonoBehaviour
                     {
                         authenticationFrame.m_Response = NetworkAuthenticationFrame.NetworkAuthenticationResponse.IncorrectPassword;
                         SendFrame(authenticationFrame, player);
-                    } else if (NetworkManager.Instance.m_ConnectionType == NetworkManager.ENetworkConnectionType.Proxy && !m_Client.Client.Connected)
+                    } else if (NetworkManager.Instance.m_Settings.m_ConnectionType == ENetworkConnectionType.Proxy 
+                        && !m_Client.Client.Connected)
                     {
                         authenticationFrame.m_Response = NetworkAuthenticationFrame.NetworkAuthenticationResponse.Error;
                         authenticationFrame.m_Message = "server_error_proxy";
@@ -144,7 +195,8 @@ public class NetworkServer : MonoBehaviour
                         authenticationFrame.m_Message = IsBanned(frame.m_SenderId).Item2;
                         SendFrame(authenticationFrame, player);
                     }
-                    else if (NetworkManager.Instance.GetPlayerCount() == NetworkManager.Instance.m_MaxPlayers && NetworkManager.Instance.m_MaxPlayers > 0)
+                    else if (NetworkManager.Instance.GetPlayerCount() == NetworkManager.Instance.m_Settings.m_MaxPlayers &&
+                        NetworkManager.Instance.m_Settings.m_MaxPlayers > 0)
                     {
                         authenticationFrame.m_Response = NetworkAuthenticationFrame.NetworkAuthenticationResponse.LobbyFull;
                         SendFrame(authenticationFrame, player);
@@ -178,6 +230,25 @@ public class NetworkServer : MonoBehaviour
 
                     NetworkRPCFrame rpcFrame = NetworkFrame.Parse<NetworkRPCFrame>(result.Buffer);
                     OnRPCCommand(player,rpcFrame.m_RPC);
+                } break;
+            case NetworkFrame.NetworkFrameType.Heartbeat:
+                {
+                    if(m_Heartbeats.ContainsKey(frame.m_SenderId))
+                        m_Heartbeats[frame.m_SenderId]++;
+                    else
+                        m_Heartbeats.Add(frame.m_SenderId, 0);
+                } break;
+            case NetworkFrame.NetworkFrameType.Acknowledged:
+                {
+                    Dictionary<ImportantFrameHolder, float> importanteFrames = new Dictionary<ImportantFrameHolder, float>();
+                    foreach(var importanteFrame in m_ImportantFrames)
+                    {
+                        if (importanteFrame.Key.m_Frame.m_FrameId == frame.m_FrameId)
+                            continue;
+
+                        importanteFrames.Add(importanteFrame.Key, importanteFrame.Value);
+                    }
+                    m_ImportantFrames = importanteFrames;
                 } break;
         }
 
@@ -284,7 +355,7 @@ public class NetworkServer : MonoBehaviour
 
                         NetworkAuthorizationRPC authRPC = new NetworkAuthorizationRPC(
                             true,
-                            (NetworkManager.Instance.m_NetworkType == NetworkManager.ENetworkType.Mixed) ? true : false, // We might be server because we can mixed host
+                            (NetworkManager.Instance.m_Settings.m_NetworkType == ENetworkType.Mixed) ? true : false, // We might be server because we can mixed host
                             spawnRPC.m_RequestAuthority,
                             id
                         );
@@ -359,6 +430,7 @@ public class NetworkServer : MonoBehaviour
             }
         }
 
+        OnPlayerDisconnected(player, NetworkDisconnectType.Kick, reason);
         NetworkManager.Instance.RemovePlayer(player.m_Id);
     }
 
@@ -406,6 +478,7 @@ public class NetworkServer : MonoBehaviour
     private void SendRPC(NetworkRPC rpc, NetworkPlayer player)
     {
         NetworkRPCFrame frame = new NetworkRPCFrame(rpc.ToString(), player.m_Id);
+        frame.m_Important = rpc.m_Important;
 
         SendFrame(frame, player);
     }
@@ -438,6 +511,17 @@ public class NetworkServer : MonoBehaviour
     /// <param name="endpoint">The endpoint of the user who is receiving this frame</param>
     private void SendFrame(NetworkFrame frame, NetworkPlayer player)
     {
+        frame.m_FrameId = m_FrameCount + 1;
+        if (frame.m_Important)
+        {
+            m_ImportantFrames.Add(new ImportantFrameHolder()
+            {
+                m_Frame = frame,
+                m_Player = player
+            }, Time.time);
+        }
+
+        m_FrameCount++;
         byte[] bytes = frame.ToBytes();
         m_Client.Send(bytes, bytes.Length, m_IPMap[player.m_Id]);
     }
@@ -446,7 +530,7 @@ public class NetworkServer : MonoBehaviour
     {
         Connected,
         Connecting,
-        Disconnected,
+        Stopped,
         Error
     }
 
@@ -460,11 +544,15 @@ public class NetworkServer : MonoBehaviour
     public virtual void OnServerStarted(string address, int port)
     {
         ELogger.Log($"Server started on: {address}:{port}", ELogger.LogType.Server);
+        m_Status = NetworkServerStatus.Connected;
+        StartCoroutine(ImportantFrameWorker());
+        StartCoroutine(HeartbeatWorker());
         _ = OnReceiveFrame();
     }
 
     public virtual void OnServerStopped(NetworkServerStopType type, string reason)
     {
+        m_Status = NetworkServerStatus.Stopped;
         ELogger.Log($"Server stopped for reason '{reason}' with type {type}", ELogger.LogType.Server);
 
         foreach(NetworkPlayer player in NetworkManager.Instance.GetPlayers())
@@ -481,7 +569,9 @@ public class NetworkServer : MonoBehaviour
     
     public virtual void OnServerError(string error)
     {
+        m_Status = NetworkServerStatus.Error;
         ELogger.Log($"Server errored with error '{error}'", ELogger.LogType.Server);
+        OnServerStopped(NetworkServerStopType.Errored, error);
     }
 
     public virtual void OnPlayerConnected(NetworkPlayer player)
