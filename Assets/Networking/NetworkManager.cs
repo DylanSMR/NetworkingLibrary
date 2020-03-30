@@ -41,7 +41,7 @@ public class NetworkManager : MonoBehaviour
         if (m_Settings.m_NetworkType == ENetworkType.Server || m_Settings.m_NetworkType == ENetworkType.Mixed)
             Host();
         if (m_Settings.m_NetworkType == ENetworkType.Client || m_Settings.m_NetworkType == ENetworkType.Mixed)
-            Connect("asd");
+            Connect();
     }
 
     /// <summary>

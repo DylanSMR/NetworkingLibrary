@@ -5,42 +5,32 @@ using UnityEngine;
 
 public class Bullet : NetworkBehaviour
 {
-    private Player m_player;
     private Rigidbody m_Body;
+
     public float m_Speed = 10f;
-    public float m_Lifetime = 3f;
-    private float m_Started = 0f;
-    private bool m_HasCollided = false;
+    private float m_KillAt = 0f;
+
+    private NetworkIdentity m_Identity;
 
     private void Start()
     {
-        if (!m_IsServer)
-            return;
+        m_Identity = GetComponent<NetworkIdentity>();
 
-        GameObject obj = NetworkManager.Instance.GetNetworkedObject(m_Spawner);
-        if (obj == null)
+        if (m_IsServer)
         {
-            return;
-        }
-        m_player = obj.GetComponent<Player>();
-        if (m_player == null)
-        {
-            NetworkServer.Instance.DestroyNetworkedObject(GetComponent<NetworkIdentity>().m_NetworkId);
-            return;
-        }
+            GameObject obj = NetworkManager.Instance.GetNetworkedObject(m_Spawner);
+            if (obj == null)
+            {
+                NetworkServer.Instance.DestroyNetworkedObject(m_Identity.m_NetworkId);
+                return;
+            }
 
-        m_Body = GetComponent<Rigidbody>();
-        if (m_Body == null)
-        {
-            NetworkServer.Instance.DestroyNetworkedObject(GetComponent<NetworkIdentity>().m_NetworkId);
-            return;
+            Gun gun = obj.GetComponentInChildren<Gun>();
+            transform.position = gun.transform.position + (gun.transform.forward / 2.5f);
+            transform.rotation = gun.transform.rotation;
+            m_KillAt = Time.time + 3f;
+            StartCoroutine(UpdateTransform());
         }
-
-        Gun gun = obj.GetComponentInChildren<Gun>();
-        transform.position = (gun.transform.position + ( gun.transform.forward / 2.5f ));
-        transform.rotation = gun.transform.rotation;
-        m_Started = Time.time + m_Lifetime;
-        UpdateTransform();
     }
 
     private void Update()
@@ -48,9 +38,9 @@ public class Bullet : NetworkBehaviour
         if (!m_IsServer)
             return;
 
-        if(Time.time > m_Started)
+        if(Time.time > m_KillAt)
         {
-            NetworkServer.Instance.DestroyNetworkedObject(GetComponent<NetworkIdentity>().m_NetworkId);
+            NetworkServer.Instance.DestroyNetworkedObject(m_Identity.m_NetworkId);
             return;
         }
 
@@ -61,7 +51,7 @@ public class Bullet : NetworkBehaviour
     {
         while(true)
         {
-            NetworkTransformRPC rpc = new NetworkTransformRPC(transform, GetComponent<NetworkIdentity>().m_NetworkId);
+            NetworkTransformRPC rpc = new NetworkTransformRPC(transform, m_Identity.m_NetworkId);
             NetworkServer.Instance.SendRPCAll(rpc);
 
             yield return new WaitForSeconds(60 / 1000);
@@ -70,31 +60,27 @@ public class Bullet : NetworkBehaviour
 
     private void OnCollisionEnter(Collision collision)
     {
-        if (!m_IsServer || m_HasCollided)
-            return;
-
-        if (NetworkServer.Instance == null) // If the check above didnt work, if we dont have a network server quit
-            return;
-
-        GameObject collided = collision.gameObject;
-        if (collision == null)
+        if(m_IsServer)
         {
-            NetworkServer.Instance.DestroyNetworkedObject(GetComponent<NetworkIdentity>().m_NetworkId);
-            return;
+            GameObject collided = collision.gameObject;
+            Player player = collided.GetComponentInParent<Player>();
+            if (player == null)
+            {
+                NetworkServer.Instance.DestroyNetworkedObject(m_Identity.m_NetworkId);
+                return;
+            }
+
+            player.m_Health -= 25;
+
+            NetworkPlayerRPC rpc = new NetworkPlayerRPC(player.m_Color, player.m_Health, m_Identity.m_NetworkId);
+            rpc.m_Important = true;
+            NetworkServer.Instance.SendRPCAll(rpc);
+            NetworkServer.Instance.DestroyNetworkedObject(m_Identity.m_NetworkId);
         }
 
-        Player player;
-        if ((player = collided.GetComponentInParent<Player>()) == null)
+        if(m_IsClient)
         {
-            NetworkServer.Instance.DestroyNetworkedObject(GetComponent<NetworkIdentity>().m_NetworkId);
-            return;
+            // Spawn hit marker, bullet effect, etc
         }
-        m_HasCollided = true;
-        player.m_Health -= 25;
-
-        NetworkPlayerRPC rpc = new NetworkPlayerRPC(player.m_Color, player.m_Health, player.GetComponent<NetworkIdentity>().m_NetworkId); ; // Health is -1 as it doesnt matter we we set it, only what the server sets
-        rpc.m_Important = true;
-        NetworkServer.Instance.SendRPCAll(rpc);
-        NetworkServer.Instance.DestroyNetworkedObject(GetComponent<NetworkIdentity>().m_NetworkId);
     }
 }

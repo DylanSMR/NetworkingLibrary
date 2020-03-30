@@ -261,7 +261,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: ad6b742586f31b343a2671e50a5f888c, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  m_Settings: {fileID: 0}
+  m_Settings: {fileID: 11400000, guid: 4c7b3f6e0b1600f42a71281e5c6edfc3, type: 2}
   m_Server: {fileID: 630510036}
 --- !u!4 &630510035
 Transform:

@@ -14,7 +14,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   m_ServerAddress: 127.0.0.1
   m_ServerPort: 58120
-  m_ServerPassword: '!kappa3!'
+  m_ServerPassword: 
   m_ProxyAddress: 
   m_ProxyPort: 0
   m_ProxyPassword: 

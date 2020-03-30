@@ -9,7 +9,7 @@ public class Player : NetworkBehaviour
     private Camera m_Camera;
 
     public float m_Health = 100f;
-    public Color m_Color = Color.black;
+    public Color m_Color;
     public bool m_Movement = true;
 
     public float speed = 100.0f;
@@ -21,6 +21,7 @@ public class Player : NetworkBehaviour
         m_Identity = GetComponent<NetworkIdentity>();
         m_Camera = GetComponentInChildren<Camera>();
         m_Camera.gameObject.SetActive(false);
+        m_Color = GetComponentInChildren<Renderer>().material.GetColor("_BaseColor");
     }
 
     public void UpdateColor(Color color)
@@ -42,7 +43,7 @@ public class Player : NetworkBehaviour
         if(m_HasAuthority)
         {
             GUI.Label(new Rect(100, 100, 100, 100), $"Ping: {NetworkClient.Instance.m_LastPing}ms");
-            GUI.Label(new Rect(100, 200, 100, 100), $"Health: {m_Health}");
+            GUI.Label(new Rect(100, 120, 100, 100), $"Health: {m_Health}");
         }
     }
 
@@ -92,6 +93,7 @@ public class Player : NetworkBehaviour
     /// <summary>
     /// An optional way to receive any extra RPC commands.
     /// Can be used to update things like health, active gun, animation (maybe done by library later), etc
+    /// Note, all calls are sent from the server never another client. So things like health can be checked via the server and not here
     /// </summary>
     /// <param name="content">The content of the rpc we received. See example below to understand more</param>
     public override void OnRPCCommand(string content)
@@ -99,16 +101,13 @@ public class Player : NetworkBehaviour
         base.OnRPCCommand(content);
         NetworkRPC rpc = NetworkRPC.FromString(content);
 
-
         switch (rpc.m_Type)
         {
             case NetworkRPCType.RPC_CUSTOM_PLAYER:
                 {
                     NetworkPlayerRPC playerRPC = NetworkRPC.Parse<NetworkPlayerRPC>(content);
                     UpdateColor(playerRPC.m_Color);
-
-                    if(playerRPC.m_Health != -1)
-                        m_Health = playerRPC.m_Health;
+                    m_Health = playerRPC.m_Health;
                 } break;
         }
     }

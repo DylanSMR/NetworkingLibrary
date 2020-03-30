@@ -175,43 +175,43 @@ public class NetworkServer : MonoBehaviour
                     OnRPCCommand(player, spawnRpc.ToString());
                     UpdatePlayer(player);
                 } break;
-            case NetworkFrame.NetworkFrameType.Authentication:
+            case NetworkFrame.NetworkFrameType.Authentication: // TODO: Clean this? Its terrible lol
                 {
                     NetworkAuthenticationFrame authenticationFrame = NetworkFrame.Parse<NetworkAuthenticationFrame>(result.Buffer);
-                    if(authenticationFrame.m_Password != m_Password && m_Password != "")
+                    NetworkPlayer tempPlayer = new NetworkPlayer()
+                    {
+                        m_Id = frame.m_SenderId
+                    };
+                    if(!m_IPMap.ContainsKey(tempPlayer.m_Id))
+                        m_IPMap.Add(frame.m_SenderId, result.RemoteEndPoint);
+
+                    if (authenticationFrame.m_Password != m_Password && m_Password != "")
                     {
                         authenticationFrame.m_Response = NetworkAuthenticationFrame.NetworkAuthenticationResponse.IncorrectPassword;
-                        SendFrame(authenticationFrame, player);
-                    } else if (NetworkManager.Instance.m_Settings.m_ConnectionType == ENetworkConnectionType.Proxy 
-                        && !m_Client.Client.Connected)
+                        SendFrame(authenticationFrame, tempPlayer);
+                    } else if (NetworkManager.Instance.m_Settings.m_ConnectionType == ENetworkConnectionType.Proxy && !m_Client.Client.Connected)
                     {
                         authenticationFrame.m_Response = NetworkAuthenticationFrame.NetworkAuthenticationResponse.Error;
                         authenticationFrame.m_Message = "server_error_proxy";
-                        SendFrame(authenticationFrame, player);
+                        SendFrame(authenticationFrame, tempPlayer);
                     }
                     else if (IsBanned(frame.m_SenderId).Item1) // Store this in a variable or cache later?
                     {
                         authenticationFrame.m_Response = NetworkAuthenticationFrame.NetworkAuthenticationResponse.Banned;
                         authenticationFrame.m_Message = IsBanned(frame.m_SenderId).Item2;
-                        SendFrame(authenticationFrame, player);
+                        SendFrame(authenticationFrame, tempPlayer);
                     }
                     else if (NetworkManager.Instance.GetPlayerCount() == NetworkManager.Instance.m_Settings.m_MaxPlayers &&
                         NetworkManager.Instance.m_Settings.m_MaxPlayers > 0)
                     {
                         authenticationFrame.m_Response = NetworkAuthenticationFrame.NetworkAuthenticationResponse.LobbyFull;
-                        SendFrame(authenticationFrame, player);
+                        SendFrame(authenticationFrame, tempPlayer);
                     }
                     else 
                     {
-                        NetworkPlayer tempPlayer = new NetworkPlayer()
-                        {
-                            m_Id = frame.m_SenderId
-                        };
                         m_AuthorizedUsers.Add(frame.m_SenderId);
-                        m_IPMap.Add(frame.m_SenderId, result.RemoteEndPoint);
 
                         authenticationFrame.m_Response = NetworkAuthenticationFrame.NetworkAuthenticationResponse.Connected;
-
                         SendFrame(authenticationFrame, tempPlayer);
                     }
                 } break;
@@ -318,7 +318,7 @@ public class NetworkServer : MonoBehaviour
 
         switch (rpc.m_Type)
         {
-            case NetworkRPCType.RPC_LIB_SPAWN:
+            case NetworkRPCType.RPC_LIB_SPAWN: // TODO: Clean this up if at all possible?
                 {
                     NetworkSpawnRPC spawnRPC = NetworkRPC.Parse<NetworkSpawnRPC>(command);
 
