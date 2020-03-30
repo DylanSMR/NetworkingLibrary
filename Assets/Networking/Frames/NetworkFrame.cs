@@ -22,49 +22,6 @@ public class NetworkFrame
     /// The unique identifier of whoever is sending this frame
     /// </summary>
     public string m_SenderId;
-    /// <summary>
-    /// The IP address of the target
-    /// </summary>
-    public string m_TargetAddress;
-    /// <summary>
-    /// The IP address of the sender
-    /// </summary>
-    public string m_SenderAddress;
-
-    /// <summary>
-    /// Configure the frame for the server to send to a client
-    /// </summary>
-    /// <param name="player">The player used to configure this frame</param>
-    public void ConfigureForServer(NetworkPlayer player)
-    {
-        IPEndPoint point = NetworkServer.Instance.m_IPMap[player.m_Id];
-        m_TargetAddress = $"{point.Address}:{point.Port}";
-        m_SenderAddress = "0.0.0.0:0000";
-    }
-
-    public IPEndPoint GetTargetEndpoint()
-    {
-        if (m_TargetAddress == "")
-            return null;
-
-        string[] split = m_TargetAddress.Split(':');
-        if (split.Length != 2)
-            return null;
-
-        return new IPEndPoint(IPAddress.Parse(split[0]), int.Parse(split[1]));
-    }
-
-    public IPEndPoint GetSenderEndpoint()
-    {
-        if (m_TargetAddress == "")
-            return null;
-
-        string[] split = m_SenderAddress.Split(':');
-        if (split.Length != 2)
-            return null;
-
-        return new IPEndPoint(IPAddress.Parse(split[0]), int.Parse(split[1]));
-    }
 
     /// <summary>
     /// Creates a networked frame to send to the server (m_TargetId will be filled in automatically)

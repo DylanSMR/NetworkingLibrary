@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Linq;
 using UnityEngine;
 
 public class NetworkManager : MonoBehaviour
@@ -37,7 +38,7 @@ public class NetworkManager : MonoBehaviour
     /// A static instance to the always active NetworkManager object
     /// </summary>
     public static NetworkManager Instance;
-    private NetworkServer m_Server;
+    public NetworkServer m_Server;
     private NetworkClient m_Client;
     private Dictionary<string, NetworkPlayer> m_Players;
     private Dictionary<int, GameObject> m_GameObjects;
@@ -48,7 +49,9 @@ public class NetworkManager : MonoBehaviour
         m_GameObjects = new Dictionary<int, GameObject>();
 
         if (m_NetworkType == ENetworkType.Server || m_NetworkType == ENetworkType.Mixed)
-            m_Server = gameObject.AddComponent<NetworkServer>(); // Create our server
+            if(m_Server == null)
+                m_Server = gameObject.AddComponent<NetworkServer>();
+
         if (m_NetworkType == ENetworkType.Client || m_NetworkType == ENetworkType.Mixed)
             m_Client = gameObject.AddComponent<NetworkClient>();
 
@@ -112,12 +115,9 @@ public class NetworkManager : MonoBehaviour
     public int GetObjectCount()
         => m_GameObjects.Count;
 
-    /// <summary>
-    /// Returns the dictionary of players
-    /// </summary>
-    /// <returns></returns>
-    public Dictionary<string, NetworkPlayer> GetPlayers()
-        => m_Players;
+    public List<NetworkPlayer> GetPlayers()
+        => m_Players.Values.ToList();
+
 
     /// <summary>
     /// Adds a player to the local network

@@ -10,8 +10,8 @@ public class ELogger
 {
     public class Colorizer
     {
-        private static string prefix = "<color=#{0}>";
-        private static string suffix = "</color>";
+        private static string prefix = "<b><color=#{0}>";
+        private static string suffix = "</color></b>";
         
         public static string Colorize(string str, Color col)
             => Colorize(str, ColorUtility.ToHtmlStringRGB(col));

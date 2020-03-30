@@ -15,10 +15,11 @@ public static class MathHelpers
 
     public static Vector3 RoundVector3(Vector3 vector, int digits = 5)
     {
-        return new Vector3(
+        Vector3 x = new Vector3(
             RoundFloat(vector.x, digits),
             RoundFloat(vector.y, digits),
             RoundFloat(vector.z, digits)
         );
+        return x;
     }
 }

@@ -24,14 +24,14 @@ public class Bullet : NetworkBehaviour
         m_player = obj.GetComponent<Player>();
         if (m_player == null)
         {
-            NetworkServer.Instance.DestroyObject(GetComponent<NetworkIdentity>().m_NetworkId);
+            NetworkServer.Instance.DestroyNetworkedObject(GetComponent<NetworkIdentity>().m_NetworkId);
             return;
         }
 
         m_Body = GetComponent<Rigidbody>();
         if (m_Body == null)
         {
-            NetworkServer.Instance.DestroyObject(GetComponent<NetworkIdentity>().m_NetworkId);
+            NetworkServer.Instance.DestroyNetworkedObject(GetComponent<NetworkIdentity>().m_NetworkId);
             return;
         }
 
@@ -49,7 +49,7 @@ public class Bullet : NetworkBehaviour
 
         if(Time.time > m_Started)
         {
-            NetworkServer.Instance.DestroyObject(GetComponent<NetworkIdentity>().m_NetworkId);
+            NetworkServer.Instance.DestroyNetworkedObject(GetComponent<NetworkIdentity>().m_NetworkId);
             return;
         }
 
@@ -78,20 +78,20 @@ public class Bullet : NetworkBehaviour
         GameObject collided = collision.gameObject;
         if (collision == null)
         {
-            NetworkServer.Instance.DestroyObject(GetComponent<NetworkIdentity>().m_NetworkId);
+            NetworkServer.Instance.DestroyNetworkedObject(GetComponent<NetworkIdentity>().m_NetworkId);
             return;
         }
 
         Player player;
         if ((player = collided.GetComponentInParent<Player>()) == null)
         {
-            NetworkServer.Instance.DestroyObject(GetComponent<NetworkIdentity>().m_NetworkId);
+            NetworkServer.Instance.DestroyNetworkedObject(GetComponent<NetworkIdentity>().m_NetworkId);
             return;
         }
         player.m_Health -= 25;
 
         NetworkPlayerRPC rpc = new NetworkPlayerRPC(player.m_Color, player.m_Health, player.GetComponent<NetworkIdentity>().m_NetworkId); ; // Health is -1 as it doesnt matter we we set it, only what the server sets
         NetworkServer.Instance.SendRPCAll(rpc);
-        NetworkServer.Instance.DestroyObject(GetComponent<NetworkIdentity>().m_NetworkId);
+        NetworkServer.Instance.DestroyNetworkedObject(GetComponent<NetworkIdentity>().m_NetworkId);
     }
 }

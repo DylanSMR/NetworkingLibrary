@@ -179,7 +179,6 @@ public class NetworkClient : MonoBehaviour
                     if(authenticationFrame.m_Response == NetworkAuthenticationFrame.NetworkAuthenticationResponse.Connected)
                     {
                         m_Status = NetworkClientStatus.Connected;
-                        m_Address = authenticationFrame.m_TargetAddress;
                         ELogger.Log("Connected to server.", ELogger.LogType.Client);
 
                         SendHandshake();
@@ -314,7 +313,6 @@ public class NetworkClient : MonoBehaviour
             case NetworkRPCType.RPC_LIB_DISCONNECTED:
                 {
                     NetworkPlayerDisconnctRPC disconnectRPC = NetworkRPC.Parse<NetworkPlayerDisconnctRPC>(content);
-                    ELogger.Log($"Player Disonnected: {disconnectRPC.m_Player.m_Name}", ELogger.LogType.Client);
                     NetworkManager.Instance.RemovePlayer(disconnectRPC.m_Player.m_Id);
 
                     foreach (var networkPair in NetworkManager.Instance.GetNetworkedObjects())
@@ -329,10 +327,13 @@ public class NetworkClient : MonoBehaviour
 
                     if (disconnectRPC.m_Player.m_Id == GetUniqueIndentifier())
                     {
-                        // We disconnected
+                        ELogger.Log($"We were disconnected for reason '{disconnectRPC.m_Reason}' with type {disconnectRPC.m_Type}", ELogger.LogType.Client);
+                    } else
+                    {
+                        ELogger.Log($"Player Disonnected: {disconnectRPC.m_Player.m_Name}", ELogger.LogType.Client);
                     }
                 } break;
-            default: // This can be handled on behaviour/object
+            default:
                 {
                     GameObject obj = NetworkManager.Instance.GetNetworkedObject(rpc.m_NetworkId);
                     if(obj != null)
@@ -364,9 +365,7 @@ public class NetworkClient : MonoBehaviour
     private void SendFrame(NetworkFrame frame)
     {
         frame.m_SenderId = GetUniqueIndentifier();
-        frame.m_SenderAddress = m_Address;
         frame.m_TargetId = "server";
-        frame.m_TargetAddress = "0.0.0.0:0000";
 
         byte[] bytes = frame.ToBytes();
         m_Client.Send(bytes, bytes.Length);
