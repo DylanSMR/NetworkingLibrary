@@ -91,7 +91,6 @@ public class NetworkServer : MonoBehaviour
     {
         m_Password = password;
         m_Client = new UdpClient(port); // Host server
-        m_Client.Client.Blocking = false;
         OnServerStarted(address, port);
     }
 
@@ -206,8 +205,7 @@ public class NetworkServer : MonoBehaviour
                         authenticationFrame.m_Response = NetworkAuthenticationFrame.NetworkAuthenticationResponse.Banned;
                         authenticationFrame.m_Message = IsBanned(frame.m_SenderId).Item2;
                     }
-                    else if (NetworkManager.Instance.GetPlayerCount() == NetworkManager.Instance.m_Settings.m_MaxPlayers &&
-                        NetworkManager.Instance.m_Settings.m_MaxPlayers > 0)
+                    else if (NetworkManager.Instance.GetPlayerCount() == NetworkManager.Instance.m_Settings.m_MaxPlayers && NetworkManager.Instance.m_Settings.m_MaxPlayers > 0)
                     {
                         authenticationFrame.m_Response = NetworkAuthenticationFrame.NetworkAuthenticationResponse.LobbyFull;
                     }
@@ -271,15 +269,7 @@ public class NetworkServer : MonoBehaviour
         return false;
     }
 
-    private void Update()
-    {
-        if (Input.GetKeyDown(KeyCode.E))
-        {
-            StopServer("Restarting");
-        }
-    }
-
-    public void StopServer(string reason)
+    public void Shutdown(string reason)
     {
         OnServerStopped(NetworkServerStopType.Gracefully, reason);
     }
@@ -340,6 +330,8 @@ public class NetworkServer : MonoBehaviour
 
                     int id = AddObjectToNetwork(prefab);
                     spawnRPC.m_NetworkId = id;
+                    networkBehaviour.m_Spawner = (spawnRPC.m_PrefabIndex == -1) ? id : player.m_NetworkId;
+                    serverInfo.m_PrefabIndex = spawnRPC.m_PrefabIndex;
                     SendRPC(spawnRPC, player);
 
                     if (spawnRPC.m_PrefabIndex == -1) 
@@ -348,25 +340,10 @@ public class NetworkServer : MonoBehaviour
                         NetworkPlayerConnectRPC connectRPC = new NetworkPlayerConnectRPC(player, -1);
                         SendRPCAll(connectRPC);
                     }
-
-                    networkBehaviour.m_Spawner = player.m_NetworkId;
-
-                    serverInfo.m_PrefabIndex = spawnRPC.m_PrefabIndex;
                     if (spawnRPC.m_RequestAuthority)
                         serverInfo.AddAuthority(player);
 
-                    NetworkAuthorizationRPC authRPC;
-                    if (IsPlayerServer(player))
-                    {
-                        authRPC = new NetworkAuthorizationRPC(
-                            true, (NetworkManager.Instance.IsMixed()) ? true : false, spawnRPC.m_RequestAuthority, id
-                        );
-                    } else
-                    {
-                        authRPC = new NetworkAuthorizationRPC(
-                            true, false, spawnRPC.m_RequestAuthority, id
-                        );
-                    }
+                    NetworkAuthorizationRPC authRPC = new NetworkAuthorizationRPC(true, IsPlayerServer(player), spawnRPC.m_RequestAuthority, id);
                     SendRPC(authRPC, player);
                 }
                 break;

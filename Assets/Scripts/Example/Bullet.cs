@@ -70,6 +70,7 @@ public class Bullet : NetworkBehaviour
 
             NetworkPlayerRPC rpc = new NetworkPlayerRPC(player.m_Color, player.m_Health, m_Identity.m_NetworkId);
             rpc.m_Important = true;
+            NetworkServer.Instance.UpdateRPC(player.gameObject, rpc);
             NetworkServer.Instance.SendRPCAll(rpc);
             NetworkServer.Instance.DestroyNetworkedObject(m_Identity.m_NetworkId);
         }

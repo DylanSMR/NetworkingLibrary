@@ -87,7 +87,7 @@ public class NetworkClient : MonoBehaviour
     {
         if(NetworkServer.Instance != null)
         {
-            NetworkServer.Instance.StopServer("Host has left the game");
+            NetworkServer.Instance.Shutdown("Host has left the game");
             return;
         }
 
