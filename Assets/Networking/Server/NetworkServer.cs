@@ -15,6 +15,7 @@ public class NetworkServer : MonoBehaviour
     private UdpClient m_Client;
     public static NetworkServer Instance;
     private int m_FrameCount = 0;
+    public long x = 0;
 
     // Server Fields
     private string m_Password;
@@ -29,6 +30,11 @@ public class NetworkServer : MonoBehaviour
     private Coroutine m_Coroutine_CTP;
 
     public Dictionary<string, IPEndPoint> m_IPMap;
+
+    private void OnGUI()
+    {
+        GUI.Label(new Rect(200, 100, 500, 500), $"Read: {x}");
+    }
 
     private void Awake()
     {
@@ -85,6 +91,7 @@ public class NetworkServer : MonoBehaviour
     {
         m_Password = password;
         m_Client = new UdpClient(port); // Host server
+        m_Client.Client.Blocking = false;
         OnServerStarted(address, port);
     }
 
@@ -94,7 +101,7 @@ public class NetworkServer : MonoBehaviour
         m_Client = new UdpClient();
         m_Client.Connect(address, port);
         ELogger.Log($"Connecting to proxy at {address}:{port}", ELogger.LogType.Server);
-        m_Coroutine_IMPF = StartCoroutine(ProxyConnectWorker(address, port));
+        m_Coroutine_CTP = StartCoroutine(ProxyConnectWorker(address, port));
     }
 
     private IEnumerator ProxyConnectWorker(string address, int port)
@@ -151,6 +158,7 @@ public class NetworkServer : MonoBehaviour
     {
         UdpReceiveResult result = await m_Client.ReceiveAsync();
         NetworkFrame frame = NetworkFrame.ReadFromBytes(result.Buffer);
+
         NetworkPlayer player = NetworkManager.Instance.GetPlayer(frame.m_SenderId);
         if(frame.m_Important && player != null)
         {
@@ -158,6 +166,7 @@ public class NetworkServer : MonoBehaviour
             importantFrame.m_FrameId = frame.m_FrameId;
             SendFrame(importantFrame, player);
         }
+        x++;
 
         switch(frame.m_Type)
         {
@@ -191,27 +200,23 @@ public class NetworkServer : MonoBehaviour
                     if (authenticationFrame.m_Password != m_Password && m_Password != "")
                     {
                         authenticationFrame.m_Response = NetworkAuthenticationFrame.NetworkAuthenticationResponse.IncorrectPassword;
-                        SendFrame(authenticationFrame, tempPlayer);
                     }
                     else if (IsBanned(frame.m_SenderId).Item1) // Store this in a variable or cache later?
                     {
                         authenticationFrame.m_Response = NetworkAuthenticationFrame.NetworkAuthenticationResponse.Banned;
                         authenticationFrame.m_Message = IsBanned(frame.m_SenderId).Item2;
-                        SendFrame(authenticationFrame, tempPlayer);
                     }
                     else if (NetworkManager.Instance.GetPlayerCount() == NetworkManager.Instance.m_Settings.m_MaxPlayers &&
                         NetworkManager.Instance.m_Settings.m_MaxPlayers > 0)
                     {
                         authenticationFrame.m_Response = NetworkAuthenticationFrame.NetworkAuthenticationResponse.LobbyFull;
-                        SendFrame(authenticationFrame, tempPlayer);
                     }
                     else 
                     {
                         m_AuthorizedUsers.Add(frame.m_SenderId);
-
                         authenticationFrame.m_Response = NetworkAuthenticationFrame.NetworkAuthenticationResponse.Connected;
-                        SendFrame(authenticationFrame, tempPlayer);
                     }
+                    SendFrame(authenticationFrame, tempPlayer);
                 } break;
             case NetworkFrame.NetworkFrameType.Ping:
                 {
@@ -393,10 +398,10 @@ public class NetworkServer : MonoBehaviour
             case NetworkRPCType.RPC_LIB_DISCONNECTED:
                 {
                     NetworkPlayerDisconnctRPC disconnctRPC = NetworkRPC.Parse<NetworkPlayerDisconnctRPC>(command);
-                    if (disconnctRPC.m_Player == player)
+                    if (disconnctRPC.m_Player.m_Id == player.m_Id)
                     {
                         // Disconnection checks?
-                        RemovePlayer(player, "Disconnected", NetworkDisconnectType.Request, true);
+                        RemovePlayer(player, disconnctRPC.m_Reason, disconnctRPC.m_DisconnectType, true);
                     }
                     else
                     {
@@ -441,6 +446,7 @@ public class NetworkServer : MonoBehaviour
         if (NetworkManager.Instance.IsServer() || NetworkManager.Instance.IsMixed())
             NetworkManager.Instance.Clean();
 
+        m_Status = NetworkServerStatus.Stopped;
         Destroy(this);
     }
 
@@ -460,19 +466,25 @@ public class NetworkServer : MonoBehaviour
         NetworkPlayerDisconnctRPC disconnectRPC = new NetworkPlayerDisconnctRPC(player, type, reason, player.m_NetworkId);
         SendRPC(disconnectRPC, player);
 
-        if(deleteObjects)
+        List<GameObject> objects = player.GetOwnedObjects();
+        if (deleteObjects)
         {
-            List<GameObject> objects = player.GetOwnedObjects();
             foreach(var networkObject in objects)
-            {
                 DestroyNetworkedObject(networkObject.GetComponent<NetworkIdentity>().m_NetworkId);
-            }
+        } else
+        {
+            foreach (var networkObject in objects)
+                networkObject.GetComponent<NetworkObjectServerInfo>().RemoveAuthority(player);
         }
 
         OnPlayerDisconnected(player, type, reason);
         NetworkManager.Instance.RemovePlayer(player.m_Id);
         if (m_AuthorizedUsers.Contains(player.m_Id))
             m_AuthorizedUsers.Remove(player.m_Id);
+        if (m_IPMap.ContainsKey(player.m_Id))
+            m_IPMap.Remove(player.m_Id);
+        if (m_Heartbeats.ContainsKey(player.m_Id))
+            m_Heartbeats.Remove(player.m_Id);
     }
 
     private void OnApplicationQuit()
@@ -572,7 +584,8 @@ public class NetworkServer : MonoBehaviour
         Connected,
         Connecting,
         Stopped,
-        Error
+        Error,
+        Stopping
     }
 
     public enum NetworkServerStopType
@@ -643,7 +656,10 @@ public class NetworkServer : MonoBehaviour
     /// <param name="reason">The reason the server was stopped</param>
     public virtual void OnServerStopped(NetworkServerStopType type, string reason)
     {
-        m_Status = NetworkServerStatus.Stopped;
+        if (m_Status == NetworkServerStatus.Stopping)
+            return;
+
+        m_Status = NetworkServerStatus.Stopping;
         ELogger.Log($"Server stopped for reason '{reason}' with type {type}", ELogger.LogType.Server);
 
         if (NetworkManager.Instance != null)

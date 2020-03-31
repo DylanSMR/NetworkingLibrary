@@ -30,6 +30,9 @@ public class Bullet : NetworkBehaviour
             transform.position = gun.transform.position + (gun.transform.forward / 2.5f);
             transform.rotation = gun.transform.rotation;
             m_KillAt = Time.time + 3f;
+
+            NetworkTransformRPC rpc = new NetworkTransformRPC(transform, m_Identity.m_NetworkId);
+            NetworkServer.Instance.SendRPCAll(rpc);
         }
     }
 

@@ -24,6 +24,14 @@ public class NetworkObjectServerInfo : MonoBehaviour
             m_RPCTypes.Add(rpc.m_Type);
     }
 
+    public void RemoveAuthority(NetworkPlayer player)
+    {
+        if (!HasAuthority(player))
+            return;
+
+        m_Authorities.Remove(player.m_Id);
+    }
+
     public void AddAuthority(NetworkPlayer player)
     {
         if (m_Authorities.Contains(player.m_Id))

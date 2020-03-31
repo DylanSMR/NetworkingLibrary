@@ -80,8 +80,21 @@ public class NetworkClient : MonoBehaviour
 
     private void OnApplicationQuit()
     {
-        m_Client.Close();
-        m_Client.Dispose();
+        Disconnect("Quitting");
+    }
+
+    public void Disconnect(string reason)
+    {
+        if(NetworkServer.Instance != null)
+        {
+            NetworkServer.Instance.StopServer("Host has left the game");
+            return;
+        }
+
+        NetworkPlayerDisconnctRPC disconnect = new NetworkPlayerDisconnctRPC(
+        NetworkManager.Instance.GetPlayer(GetUniqueIndentifier()), NetworkDisconnectType.Request, reason, -1);
+        SendRPC(disconnect);
+        Clean();
     }
 
     public int m_ServerHeartbeats = 0;
@@ -125,12 +138,7 @@ public class NetworkClient : MonoBehaviour
         if (m_Coroutine_IMPT != null)
             StopCoroutine(m_Coroutine_IMPT);
 
-        if(m_Client != null)
-        {
-            m_Client.Close();
-            m_Client.Dispose();
-        }
-
+        m_Client = null;
         Destroy(this);
     }
 
@@ -144,7 +152,10 @@ public class NetworkClient : MonoBehaviour
     /// <param name="password">The password of the game server/proxy</param>
     private IEnumerator ConnectToServer(string address, int port, string password) // Rework this entire function
     {
-        for(; ;)
+        m_Client = new UdpClient();
+        m_Client.Connect(address, port); // Try and connect to the server
+        _ = OnReceiveFrame();
+        for (; ;)
         {
             if(m_ConnectionTries == 5)
             {
@@ -156,36 +167,24 @@ public class NetworkClient : MonoBehaviour
             if(m_Client != null && m_Client.Client != null && m_Client.Client.Connected && m_Status != NetworkClientStatus.Connected)
             {
                 NetworkAuthenticationFrame authFrame = new NetworkAuthenticationFrame(password);
-                SendFrame(authFrame); // If we get a auth frame back, we are good! Unless we got the password wrong :/
+                SendFrame(authFrame); 
                 yield return new WaitForSeconds(2f);
             }
-            // Keep trying to connect until we either give up or eventually connect
-            if(m_Status == NetworkClientStatus.Connected)
-                break;
-            if (m_Status == NetworkClientStatus.Error || m_Status == NetworkClientStatus.Unknown)
+            if(m_Status == NetworkClientStatus.Connected || m_Status == NetworkClientStatus.Error || m_Status == NetworkClientStatus.Unknown)
                 break;
 
             m_ConnectionTries++;
             ELogger.Log($"Attempting to connect to server [{address}:{port}][{m_ConnectionTries}/5]", ELogger.LogType.Client);
-            if (m_Client != null)
-            {
-                m_Client.Close();
-                m_Client.Dispose();
-            }
-
-            m_Client = new UdpClient();
-            m_Client.Connect(address, port); // Try and connect to the server
-            _ = OnReceiveFrame();
             try
             {
                 NetworkAuthenticationFrame authFrame = new NetworkAuthenticationFrame(password);
-                SendFrame(authFrame); // If we get a auth frame back, we are good! Unless we got the password wrong :/
+                SendFrame(authFrame); 
             }
             catch (Exception e) {
                 Debug.LogError(e);
-            }; // Ignore any errors, stupid errors
+            };
 
-            yield return new WaitForSeconds(2.5f); // Every 2 and a half seconds we are going to try and connect again! Yay :/
+            yield return new WaitForSeconds(2.5f);
         }
     }
 
