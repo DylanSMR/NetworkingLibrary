@@ -33,9 +33,15 @@ public class Player : NetworkBehaviour
     public override void OnAuthorityChanged(bool status)
     {
         base.OnAuthorityChanged(status);
+        if (!m_HasAuthority)
+            return;
 
         if(status)
+        {
             m_Camera.gameObject.SetActive(true);
+
+            StartCoroutine(SendTransformUpdate());
+        }
     }
 
     private void OnGUI()
@@ -81,13 +87,15 @@ public class Player : NetworkBehaviour
         } 
     }
 
-    private void FixedUpdate()
+    private IEnumerator SendTransformUpdate()
     {
-        if (!m_HasAuthority)
-            return;
+        while(true)
+        {
+            NetworkTransformRPC rpc = new NetworkTransformRPC(transform, m_Identity.m_NetworkId);
+            NetworkClient.Instance.SendRPC(rpc);
 
-        NetworkTransformRPC rpc = new NetworkTransformRPC(transform, m_Identity.m_NetworkId);
-        NetworkClient.Instance.SendRPC(rpc);
+            yield return new WaitForSeconds(60 / 1000);
+        }
     }
 
     /// <summary>

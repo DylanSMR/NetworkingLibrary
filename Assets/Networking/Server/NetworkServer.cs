@@ -14,16 +14,15 @@ public class NetworkServer : MonoBehaviour
     // Networking Fields
     private UdpClient m_Client;
     public static NetworkServer Instance;
-    private int m_FrameCount = 0;
-    public long x = 0;
+    public int m_FrameCount = 0;
 
     // Server Fields
-    private string m_Password;
+    public string m_Password;
     public NetworkServerStatus m_Status = NetworkServerStatus.Connecting;
     /// <summary>
     /// A list of users who are authorized and can use the authorized frames
     /// </summary>
-    private List<string> m_AuthorizedUsers;
+    public List<string> m_AuthorizedUsers;
 
     private Coroutine m_Coroutine_IMPF;
     private Coroutine m_Coroutine_HB;
@@ -33,7 +32,10 @@ public class NetworkServer : MonoBehaviour
 
     private void OnGUI()
     {
-        GUI.Label(new Rect(200, 100, 500, 500), $"Read: {x}");
+        if (m_Client == null)
+            return;
+
+        GUI.Label(new Rect(100, 200, 500, 500), $"Availability: " + m_Client.Available);
     }
 
     private void Awake()
@@ -57,7 +59,7 @@ public class NetworkServer : MonoBehaviour
     {
         while(m_Status == NetworkServerStatus.Connected)
         {
-            foreach(var player in NetworkManager.Instance.GetPlayers())
+            foreach (var player in NetworkManager.Instance.GetPlayers())
             {
                 if(!m_Heartbeats.ContainsKey(player.m_Id))
                 {
@@ -66,7 +68,7 @@ public class NetworkServer : MonoBehaviour
                 }
                 if(m_Heartbeats[player.m_Id] + 1 == 3)
                 {
-                    ELogger.Log($"Player {player.m_Name} lost connection to server", ELogger.LogType.Server);
+                    ELogger.Log($"Player {player.m_Name} failed to keep up heartbeat", ELogger.LogType.Server);
                     RemovePlayer(player, "Lost Connection", NetworkDisconnectType.LostConnection);
                     continue;
                 }
@@ -77,8 +79,14 @@ public class NetworkServer : MonoBehaviour
                 SendFrame(heartFrame, player);
             }
 
-            yield return new WaitForSeconds(1);
+            yield return new WaitForSeconds(2.5f);
         }
+    }
+
+    private void Update()
+    {
+        if (m_Client == null)
+            return;
     }
 
     /// <summary>
@@ -91,22 +99,39 @@ public class NetworkServer : MonoBehaviour
     {
         m_Password = password;
         m_Client = new UdpClient(port); // Host server
+        m_IsProxy = false;
+        _ = AddUDPWorker();
         OnServerStarted(address, port);
     }
 
     public void HostAsProxy(string address, int port, string password)
     {
         m_Password = password;
-        m_Client = new UdpClient();
-        m_Client.Connect(address, port);
+        m_IsProxy = true;
         ELogger.Log($"Connecting to proxy at {address}:{port}", ELogger.LogType.Server);
         m_Coroutine_CTP = StartCoroutine(ProxyConnectWorker(address, port));
     }
 
+    private int m_ConnectionAttempts = 0;
+    private bool m_IsProxy = false;
     private IEnumerator ProxyConnectWorker(string address, int port)
     {
-        OnServerStarted(address, port);
-        return null;
+        m_Client = new UdpClient();
+        m_Client.Connect(address, port);
+        _ = AddUDPWorker();
+
+        while (m_ConnectionAttempts != 5 && m_Status != NetworkServerStatus.Connected)
+        {
+            ELogger.Log($"Attempting to send authentication frame to proxy [{m_ConnectionAttempts + 1}/5]", ELogger.LogType.Server);
+            SendFrame(new NetworkFrame(NetworkFrame.NetworkFrameType.Authentication, "proxy"), null); // Null because we are proxy and it doesnt really matter from server
+
+            m_ConnectionAttempts++;
+            yield return new WaitForSeconds(2.5f);
+        }
+        if (m_Status == NetworkServerStatus.Connected)
+            OnServerStarted(address, port);
+        else
+            OnServerError($"Failed to connect to proxy at {address}:{port}");
     }
 
     private Dictionary<ImportantFrameHolder, float> m_ImportantFrames;
@@ -153,9 +178,10 @@ public class NetworkServer : MonoBehaviour
     /// Called when the server receives a networked frame
     /// </summary>
     /// <returns></returns>
-    private async Task OnReceiveFrame()
+    private async Task AddUDPWorker()
     {
         UdpReceiveResult result = await m_Client.ReceiveAsync();
+        _ = AddUDPWorker();
         NetworkFrame frame = NetworkFrame.ReadFromBytes(result.Buffer);
 
         NetworkPlayer player = NetworkManager.Instance.GetPlayer(frame.m_SenderId);
@@ -165,7 +191,6 @@ public class NetworkServer : MonoBehaviour
             importantFrame.m_FrameId = frame.m_FrameId;
             SendFrame(importantFrame, player);
         }
-        x++;
 
         switch(frame.m_Type)
         {
@@ -189,6 +214,12 @@ public class NetworkServer : MonoBehaviour
             case NetworkFrame.NetworkFrameType.Authentication: // TODO: Clean this? Its terrible lol
                 {
                     NetworkAuthenticationFrame authenticationFrame = NetworkFrame.Parse<NetworkAuthenticationFrame>(result.Buffer);
+                    if(frame.m_SenderId == "proxy")
+                    {
+                        ELogger.Log("Recieved proxy auth", ELogger.LogType.Server);
+                        m_Status = NetworkServerStatus.Connected;
+                        break;
+                    }
                     NetworkPlayer tempPlayer = new NetworkPlayer()
                     {
                         m_Id = frame.m_SenderId
@@ -207,6 +238,7 @@ public class NetworkServer : MonoBehaviour
                     }
                     else if (NetworkManager.Instance.GetPlayerCount() == NetworkManager.Instance.m_Settings.m_MaxPlayers && NetworkManager.Instance.m_Settings.m_MaxPlayers > 0)
                     {
+                        Debug.Log("Player Count: " + NetworkManager.Instance.GetPlayerCount());
                         authenticationFrame.m_Response = NetworkAuthenticationFrame.NetworkAuthenticationResponse.LobbyFull;
                     }
                     else 
@@ -214,6 +246,7 @@ public class NetworkServer : MonoBehaviour
                         m_AuthorizedUsers.Add(frame.m_SenderId);
                         authenticationFrame.m_Response = NetworkAuthenticationFrame.NetworkAuthenticationResponse.Connected;
                     }
+                    authenticationFrame.m_TargetId = authenticationFrame.m_SenderId;
                     SendFrame(authenticationFrame, tempPlayer);
                 } break;
             case NetworkFrame.NetworkFrameType.Ping:
@@ -221,7 +254,7 @@ public class NetworkServer : MonoBehaviour
                     if (!IsUserAuthorized(frame.m_SenderId)) // Must be authorized to use this frame
                         break;
 
-                    NetworkFrame pingFrame = new NetworkFrame(NetworkFrame.NetworkFrameType.Ping, frame.m_SenderId, "server");
+                    NetworkFrame pingFrame = new NetworkFrame(NetworkFrame.NetworkFrameType.Ping, frame.m_SenderId);
                     SendFrame(pingFrame, player);
                 } break;
             case NetworkFrame.NetworkFrameType.RPC:
@@ -235,7 +268,7 @@ public class NetworkServer : MonoBehaviour
             case NetworkFrame.NetworkFrameType.Heartbeat:
                 {
                     if(m_Heartbeats.ContainsKey(frame.m_SenderId))
-                        m_Heartbeats[frame.m_SenderId]++;
+                        m_Heartbeats[frame.m_SenderId] = 0;
                     else
                         m_Heartbeats.Add(frame.m_SenderId, 0);
                 } break;
@@ -252,8 +285,6 @@ public class NetworkServer : MonoBehaviour
                     m_ImportantFrames = importanteFrames;
                 } break;
         }
-
-        _ = OnReceiveFrame();
     }
 
     /// <summary>
@@ -339,12 +370,14 @@ public class NetworkServer : MonoBehaviour
                         player.m_NetworkId = id;
                         NetworkPlayerConnectRPC connectRPC = new NetworkPlayerConnectRPC(player, -1);
                         SendRPCAll(connectRPC);
+                        OnPlayerConnected(player);
                     }
                     if (spawnRPC.m_RequestAuthority)
                         serverInfo.AddAuthority(player);
 
                     NetworkAuthorizationRPC authRPC = new NetworkAuthorizationRPC(true, IsPlayerServer(player), spawnRPC.m_RequestAuthority, id);
                     SendRPC(authRPC, player);
+                    OnNetworkObjectCreated(prefab, player);
                 }
                 break;
             case NetworkRPCType.RPC_LIB_DESTROY:
@@ -364,12 +397,17 @@ public class NetworkServer : MonoBehaviour
                     GameObject obj = NetworkManager.Instance.GetNetworkedObject(transformRPC.m_NetworkId);
                     if(PlayerHasAuthority(obj, player))
                     {
-                        obj.transform.position = transformRPC.m_Position;
-                        obj.transform.eulerAngles = transformRPC.m_Rotation;
-                        obj.transform.localScale = transformRPC.m_Scale;
+                        // Do any checks on the data here, such as being out of bounds, etc
+
+                        if(!IsPlayerServer(player)) // We dont need to update info we already have
+                        {
+                            obj.transform.position = transformRPC.m_Position;
+                            obj.transform.eulerAngles = transformRPC.m_Rotation;
+                            obj.transform.localScale = transformRPC.m_Scale;
+                        }
 
                         UpdateRPC(obj, transformRPC);
-                        SendRPCAll(transformRPC); // Probably should add a exclude to this so we dont send it to ourselves? Idk
+                        SendRPCAllExcept(transformRPC, new List<string>() { player.m_Id }); // Probably should add a exclude to this so we dont send it to ourselves? Idk
                     }
                 } break;
             case NetworkRPCType.RPC_LIB_DISCONNECTED:
@@ -383,8 +421,11 @@ public class NetworkServer : MonoBehaviour
                     else
                     {
                         // Authoratative admin checks later : TODO
+                        // This is literally terrible, this would just kick the player who is trying to kick. 
+                        // Make a proper "kick" rpc or add some property into the disconnect rpc
                         RemovePlayer(player, $"Kicked by: {player.m_Name}", NetworkDisconnectType.Kick, true);
                     }
+                    OnPlayerDisconnected(player, disconnctRPC.m_DisconnectType, disconnctRPC.m_Reason);
                 } break;
         }
     }
@@ -402,9 +443,14 @@ public class NetworkServer : MonoBehaviour
 
         return id;
     }
-    
+
+    private bool m_Cleaning = false;
     public void Clean()
     {
+        if (m_Cleaning)
+            return;
+
+        m_Cleaning = true;
         ELogger.Log($"Cleaning up", ELogger.LogType.Server);
 
         if (m_Client != null)
@@ -500,6 +546,17 @@ public class NetworkServer : MonoBehaviour
 
     public void SendRPCAll(NetworkRPC rpc)
         => NetworkManager.Instance.GetPlayers().ForEach(player => SendRPC(rpc, player));
+    
+    public void SendRPCAllExcept(NetworkRPC rpc, List<string> players)
+    {
+        foreach(var player in NetworkManager.Instance.GetPlayers())
+        {
+            if (players.Contains(player.m_Id))
+                continue;
+
+            SendRPC(rpc, player);
+        }
+    }
 
     /// <summary>
     /// Constructs a NetworkFrame and sends it from a NetworkRPC
@@ -552,8 +609,14 @@ public class NetworkServer : MonoBehaviour
         }
 
         m_FrameCount++;
+        frame.m_SenderId = "server";
+        if (player != null)
+            frame.m_TargetId = player.m_Id;
         byte[] bytes = frame.ToBytes();
-        m_Client.Send(bytes, bytes.Length, m_IPMap[player.m_Id]);
+        if (!m_IsProxy)
+            m_Client.Send(bytes, bytes.Length, m_IPMap[player.m_Id]);
+        else
+            m_Client.Send(bytes, bytes.Length);
     }
 
     public enum NetworkServerStatus
@@ -592,18 +655,21 @@ public class NetworkServer : MonoBehaviour
             serverInfo.m_PrefabIndex = -2;
             // Lets "spawn" the object on our side real fast
 
-            ELogger.Log($"Spawning networked object: {behaviour.gameObject.name}" , ELogger.LogType.Server);
+            ELogger.Log($"Spawning pre-existing networked object: {behaviour.gameObject.name}" , ELogger.LogType.Server);
         }
     }
 
     public virtual void OnServerStarted(string address, int port)
     {
-        ELogger.Log($"Server started on: {address}:{port}", ELogger.LogType.Server);
+        if (!m_IsProxy)
+            ELogger.Log($"Server started on: {address}:{port}", ELogger.LogType.Server);
+        else
+            ELogger.Log($"Server hosting off proxy at {address}:{port}", ELogger.LogType.Server);
+
         m_Status = NetworkServerStatus.Connected;
         m_Coroutine_IMPF = StartCoroutine(ImportantFrameWorker());
         m_Coroutine_HB = StartCoroutine(HeartbeatWorker());
         InitializeNetworkedObjects();
-        _ = OnReceiveFrame();
     }
 
     /// <summary>
@@ -669,6 +735,9 @@ public class NetworkServer : MonoBehaviour
     /// <param name="player">The player that has connected</param>
     public virtual void OnPlayerConnected(NetworkPlayer player)
     {
+        _ = AddUDPWorker();
+        _ = AddUDPWorker(); // We give him two workers, since a player can give a lot of traffic. This really needs to be automatically load balanced though
+
         ELogger.Log($"A player has connected to the server: {player.m_Name}|{player.m_Id}", ELogger.LogType.Server);
     }
 

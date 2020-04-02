@@ -34,6 +34,7 @@ public class ExampleServer : NetworkServer
                             break;
                         }
 
+                        playerRPC.m_Health = obj.GetComponent<Player>().m_Health; // Set it to the server health
                         obj.GetComponent<Player>().UpdateColor(playerRPC.m_Color);
                         UpdateRPC(obj, playerRPC);
                         SendRPCAll(playerRPC); 

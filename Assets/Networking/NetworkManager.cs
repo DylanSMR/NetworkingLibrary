@@ -216,7 +216,7 @@ public class NetworkManager : MonoBehaviour
         m_IsPlaying = true;
         if (m_Server == null)
             m_Server = gameObject.AddComponent<NetworkServer>();
-        m_Server.Host(address, port, password);
+        m_Server.HostAsProxy(address, port, password);
     }
 
     public void HostMixed(string addr, int port, string pass, bool proxy)

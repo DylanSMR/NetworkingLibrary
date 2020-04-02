@@ -36,9 +36,8 @@ public class NetworkFrame
     /// </summary>
     /// <param name="type">The type of frame sent to the server</param>
     /// <param name="m_SenderId">The ID of the client who is sending this frame</param>
-    public NetworkFrame(NetworkFrameType type, string m_SenderId)
+    public NetworkFrame(NetworkFrameType type)
     {
-        this.m_SenderId = m_SenderId;
         this.m_Type = type;
     }
 
@@ -48,11 +47,10 @@ public class NetworkFrame
     /// <param name="type">The type of frame sent to the client</param>
     /// <param name="m_TargetId">The ID of the client who is receiving this frame</param>
     /// <param name="m_SenderId">The ID of the server, generally should be left to default</param>
-    public NetworkFrame(NetworkFrameType type, string m_TargetId, string m_SenderId = "server")
+    public NetworkFrame(NetworkFrameType type, string m_TargetId)
     {
         this.m_Type = type;
         this.m_TargetId = m_TargetId;
-        this.m_SenderId = m_SenderId; 
     }
     
     /// <summary>
