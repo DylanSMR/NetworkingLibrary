@@ -9,35 +9,13 @@ using System.Threading.Tasks;
 using UnityEngine;
 using Debug = UnityEngine.Debug; // Hmmm
 
-/// <summary>
-/// A class that handles all networking between the server and the us (The Client)
-/// </summary>
-public class NetworkClient : MonoBehaviour
+public class NetworkClient : NetworkConnection
 {
     // Networking Fields
-    private UdpClient m_Client;
     public static NetworkClient Instance;
-    public int m_FrameCount;
-
-    private Coroutine m_Coroutine_CTS;
-    private Coroutine m_Coroutine_HB;
-    private Coroutine m_Coroutine_PING;
-    private Coroutine m_Coroutine_IMPT;
 
     public string m_DefaultName = "Default";
-
-    /// <summary>
-    /// A integer that represents how many times we have tried to connect to the server/proxy
-    /// </summary>
-    public int m_ConnectionTries { get; private set; } = 0;
-    /// <summary>
-    /// The status of the network client
-    /// </summary>
-    public NetworkClientStatus m_Status = NetworkClientStatus.Disconnected;
-
     public int randomNumber = 0;
-
-    private Dictionary<ImportantFrameHolder, float> m_ImportantFrames;
 
     // Ping Fields
     public float m_LastPing { get; private set; } = -1;
@@ -51,7 +29,6 @@ public class NetworkClient : MonoBehaviour
             return; // We want to use the already existing network client
         }
         Instance = this;
-        m_ImportantFrames = new Dictionary<ImportantFrameHolder, float>();
         randomNumber = UnityEngine.Random.Range(0, 100);
     }
     
@@ -61,51 +38,35 @@ public class NetworkClient : MonoBehaviour
     /// </summary>
     /// <returns>The unqiue identifier for this user</returns>
     public string GetUniqueIndentifier()
-    {
-        return SystemInfo.deviceUniqueIdentifier + randomNumber.ToString();
-    }
-
-    /// <summary>
-    /// Connects to a game server
-    /// </summary>
-    /// <param name="address">The address of the game server/proxy</param>
-    /// <param name="port">The port of the game server/proxy</param>
-    /// <param name="password">The password used to connect to the server</param>
-    public void Connect(string address, int port, string password = "")
-    {
-        m_Status = NetworkClientStatus.Connecting;
-        m_Coroutine_CTS = StartCoroutine(ConnectToServer(address, port, password));
-    }
+        => SystemInfo.deviceUniqueIdentifier + randomNumber.ToString();
 
     private void OnApplicationQuit()
-    {
-        Disconnect("Quitting");
-    }
+        => Disconnect("Quitting");
 
     public void Disconnect(string reason)
     {
         NetworkPlayerDisconnctRPC disconnect = new NetworkPlayerDisconnctRPC(
-        NetworkManager.Instance.GetPlayer(GetUniqueIndentifier()), NetworkDisconnectType.Request, reason, -1);
+            NetworkManager.Instance.GetPlayer(GetUniqueIndentifier()), NetworkDisconnectType.Request, reason, -1
+        );
         SendRPC(disconnect);
-        Clean();
+        Shutdown(NetworkShutdownType.Gracefully, reason);
     }
 
     public int m_ServerHeartbeats = 0;
 
     private IEnumerator HeartbeatWorker()
     {
-        while (m_Status == NetworkClientStatus.ConnectedToAll)
+        while (GetNetworkState() == NetworkState.Established)
         {
-            if (m_ServerHeartbeats + 1 == 3)
+            if (m_ServerHeartbeats == 2)
             {
-                ELogger.Log($"Lost connection to server", ELogger.LogType.Server);
-                Clean();
+                Disconnect("Lost connection to host");
                 continue;
             }
 
             m_ServerHeartbeats++;
-            NetworkFrame heartFrame = new NetworkFrame(NetworkFrame.NetworkFrameType.Heartbeat, GetUniqueIndentifier());
-            SendFrame(heartFrame);
+            NetworkFrame heartFrame = new NetworkFrame(NetworkFrame.NetworkFrameType.Heartbeat, GetUniqueIndentifier(), "server");
+            QueueFrame(heartFrame);
 
             yield return new WaitForSeconds(2.5f);
         }
@@ -117,52 +78,10 @@ public class NetworkClient : MonoBehaviour
             return;
 
         ELogger.Log("Cleaning up client", ELogger.LogType.Client);
+        if(NetworkManager.Instance.IsClient())
+            NetworkManager.Instance.Clean();
 
-        NetworkManager.Instance.Clean();
-        if (m_Coroutine_CTS != null)
-            StopCoroutine(m_Coroutine_CTS);
-        if (m_Coroutine_HB != null)
-            StopCoroutine(m_Coroutine_HB);
-        if (m_Coroutine_PING != null)
-            StopCoroutine(m_Coroutine_PING);
-        if (m_Coroutine_IMPT != null)
-            StopCoroutine(m_Coroutine_IMPT);
-
-        m_Client = null;
         Destroy(this);
-    }
-
-    /// <summary>
-    /// Runs a loop to ensure connection to the game server. 
-    /// After a few tries it will eventually fail and log an error
-    /// TODO: Call a function or something if it fails to connect
-    /// </summary>
-    /// <param name="address">The address of the game server/proxy</param>
-    /// <param name="port">The port of the game server/proxy</param>
-    /// <param name="password">The password of the game server/proxy</param>
-    private IEnumerator ConnectToServer(string address, int port, string password) // Rework this entire function
-    {
-        m_Client = new UdpClient();
-        m_Client.Connect(address, port); // Try and connect to the server
-        _ = AddUDPWorker();
-        while (m_Status != NetworkClientStatus.ConnectedToAll && m_ConnectionTries != 5)
-        {
-            ELogger.Log($"Attempting to connect to server: [{m_ConnectionTries + 1}/5]", ELogger.LogType.Client);
-            SendFrame(new NetworkAuthenticationFrame(password));
-
-            m_ConnectionTries++;
-            yield return new WaitForSeconds(2.5f);
-        }
-
-        if (m_Status == NetworkClientStatus.ConnectedToProxy)
-        {
-            ELogger.Log("Connected to proxy, but failed to connect to server", ELogger.LogType.Client);
-            Clean();
-        } else if (m_Status == NetworkClientStatus.Connecting)
-        {
-            ELogger.Log("Failed to connect to proxy if available, as well as the server", ELogger.LogType.Client);
-            Clean();
-        } 
     }
 
     /// <summary>
@@ -171,44 +90,7 @@ public class NetworkClient : MonoBehaviour
     private void SendHandshake()
     {
         NetworkHandshakeFrame handshake = new NetworkHandshakeFrame(m_DefaultName);
-        SendFrame(handshake);
-    }
-
-    private class ImportantFrameHolder
-    {
-        public NetworkFrame m_Frame;
-        public int m_Tries = 0;
-    }
-    private IEnumerator ImportantFrameWorker()
-    {
-        while(m_Status == NetworkClientStatus.ConnectedToAll)
-        {
-            if (m_ImportantFrames.Count > 0)
-            {
-                Dictionary<ImportantFrameHolder, float> newPairs = new Dictionary<ImportantFrameHolder, float>();
-                foreach (var importantPair in m_ImportantFrames.ToDictionary(entry => entry.Key, entry => entry.Value))
-                {
-                    NetworkFrame frame = importantPair.Key.m_Frame;
-                    if (importantPair.Key.m_Tries > 4) 
-                    {
-                        // Cry? Idk what to do if server doesnt ack our frame, maybe just disconnected and cry
-                        Disconnect("Lost connection to host");
-                        continue;
-                    }
-                    if (importantPair.Value + 2.0f > Time.time)
-                    {
-                        // This frame has expired, we assume its invalid and send it again
-                        importantPair.Key.m_Tries++;
-                        newPairs.Add(importantPair.Key, Time.time + 2f);
-                        SendFrame(frame);
-                        continue;
-                    }
-                }
-                m_ImportantFrames = newPairs;
-            }
-
-            yield return new WaitForSeconds(1);
-        }
+        QueueFrame(handshake);
     }
 
     /// <summary>
@@ -216,28 +98,18 @@ public class NetworkClient : MonoBehaviour
     /// </summary>
     private void SendPing()
     {
-        NetworkFrame pingFrame = new NetworkFrame(NetworkFrame.NetworkFrameType.Ping, GetUniqueIndentifier());
-        if (m_Status == NetworkClientStatus.ConnectedToAll)
+        NetworkFrame pingFrame = new NetworkFrame(NetworkFrame.NetworkFrameType.Ping, GetUniqueIndentifier(), "server");
+        if (GetNetworkState() == NetworkState.Established)
         {
             m_Stopwatch = new Stopwatch();
             m_Stopwatch.Start();
-        }   
-        SendFrame(pingFrame);
+        }
+        QueueFrame(pingFrame);
     }
 
-    /// <summary>
-    /// An async function to receive bytes (frames) from the game server
-    /// </summary>
-    private async Task AddUDPWorker()
+    public override void OnReceiveData(NetworkFrame frame, IPEndPoint point, byte[] bytes)
     {
-        UdpReceiveResult result = await m_Client.ReceiveAsync();
-        NetworkFrame frame = NetworkFrame.ReadFromBytes(result.Buffer);
-        if (frame.m_Important)
-        {
-            NetworkFrame importantFrame = new NetworkFrame(NetworkFrame.NetworkFrameType.Acknowledged, GetUniqueIndentifier());
-            importantFrame.m_FrameId = frame.m_FrameId;
-            SendFrame(importantFrame);
-        }
+        base.OnReceiveData(frame, point, bytes);
 
         switch (frame.m_Type)
         {
@@ -252,26 +124,14 @@ public class NetworkClient : MonoBehaviour
                 } break;
             case NetworkFrame.NetworkFrameType.Authentication:
                 {
-                    if(frame.m_SenderId == "proxy")
-                    {
-                        ELogger.Log("Connected to proxy", ELogger.LogType.Client);
-                        m_Status = NetworkClientStatus.ConnectedToProxy;
-                        break;
-                    }
-
-                    NetworkAuthenticationFrame authenticationFrame = NetworkFrame.Parse<NetworkAuthenticationFrame>(result.Buffer);
+                    NetworkAuthenticationFrame authenticationFrame = NetworkFrame.Parse<NetworkAuthenticationFrame>(bytes);
                     if(authenticationFrame.m_Response == NetworkAuthenticationFrame.NetworkAuthenticationResponse.Connected)
                     {
-                        m_Status = NetworkClientStatus.ConnectedToAll;
-                        ELogger.Log("Connected to server", ELogger.LogType.Client);
-
                         SendHandshake();
-                        m_Coroutine_PING = StartCoroutine(PingChecker());
-                        m_Coroutine_IMPT = StartCoroutine(ImportantFrameWorker());
-                        m_Coroutine_HB = StartCoroutine(HeartbeatWorker());
+                        StartCoroutine(PingChecker());
+                        StartCoroutine(HeartbeatWorker());
                     } else
                     {
-                        m_Status = NetworkClientStatus.Error;
                         if(authenticationFrame.m_Response == NetworkAuthenticationFrame.NetworkAuthenticationResponse.Banned)
                         {
                             Debug.LogWarning($"[Client] Failed to connect to server. We have been banned from that server: {authenticationFrame.m_Message}!");
@@ -293,28 +153,14 @@ public class NetworkClient : MonoBehaviour
                 } break;
             case NetworkFrame.NetworkFrameType.RPC:
                 {
-                    NetworkRPCFrame rpcFrame = NetworkFrame.Parse<NetworkRPCFrame>(result.Buffer);
+                    NetworkRPCFrame rpcFrame = NetworkFrame.Parse<NetworkRPCFrame>(bytes);
                     OnRPCCommand(rpcFrame.m_RPC);
                 } break;
             case NetworkFrame.NetworkFrameType.Heartbeat:
                 {
                     m_ServerHeartbeats = 0;
                 } break;
-            case NetworkFrame.NetworkFrameType.Acknowledged:
-                {
-                    Dictionary<ImportantFrameHolder, float> importanteFrames = new Dictionary<ImportantFrameHolder, float>();
-                    foreach (var importanteFrame in m_ImportantFrames)
-                    {
-                        if (importanteFrame.Key.m_Frame.m_FrameId == frame.m_FrameId)
-                            continue;
-
-                        importanteFrames.Add(importanteFrame.Key, importanteFrame.Value);
-                    }
-                    m_ImportantFrames = importanteFrames;
-                } break;
         }
-
-        _ = AddUDPWorker();
     }
 
     private IEnumerator PingChecker()
@@ -323,14 +169,6 @@ public class NetworkClient : MonoBehaviour
         {
             SendPing();
             yield return new WaitForSeconds(1f);
-        }
-    }
-
-    private void Update()
-    {
-        if(Input.GetKeyDown(KeyCode.P))
-        {
-            SendPing();
         }
     }
 
@@ -462,47 +300,10 @@ public class NetworkClient : MonoBehaviour
     /// <param name="rpc">The RPC being sent</param>
     public void SendRPC(NetworkRPC rpc)
     {
-        NetworkRPCFrame networkRPCFrame = new NetworkRPCFrame(rpc.ToString(), GetUniqueIndentifier())
+        NetworkRPCFrame networkRPCFrame = new NetworkRPCFrame(rpc.ToString(), GetUniqueIndentifier(), "server")
         {
             m_Important = rpc.m_Important
         };
-        SendFrame(networkRPCFrame);
-    }
-
-    /// <summary>
-    /// Sends a frame to the server
-    /// </summary>
-    /// <param name="frame">The frame being sent to the server</param>
-    private void SendFrame(NetworkFrame frame)
-    {
-        frame.m_SenderId = GetUniqueIndentifier();
-        frame.m_TargetId = "server";
-        if(frame.m_FrameId == -1)
-            frame.m_FrameId = m_FrameCount + 1;
-
-        if(frame.m_Important)
-        {
-            m_ImportantFrames.Add(new ImportantFrameHolder()
-            {
-                m_Frame = frame
-            }, Time.time);
-        }
-
-        m_FrameCount++;
-        byte[] bytes = frame.ToBytes();
-        m_Client.Send(bytes, bytes.Length);
-    }
-
-    /// <summary>
-    /// A enum that represents the status of the client
-    /// </summary>
-    public enum NetworkClientStatus
-    {
-        Connecting,
-        ConnectedToAll,
-        ConnectedToProxy,
-        Disconnected,
-        Error,
-        Unknown
+        QueueFrame(networkRPCFrame);
     }
 }

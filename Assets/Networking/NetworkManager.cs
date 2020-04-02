@@ -89,12 +89,13 @@ public class NetworkManager : MonoBehaviour
     /// </summary>
     /// <param name="id">The unique id of the player</param>
     /// <param name="player">A custom NetworkPlayer class</param>
-    public void AddPlayer(string id, NetworkPlayer player)
+    public NetworkPlayer AddPlayer(string id, NetworkPlayer player)
     {
         if (m_Players.ContainsKey(id))
-            return;
+            return null;
 
         m_Players.Add(id, player);
+        return player;
     }
 
     public NetworkPlayer GetPlayer(string id)
@@ -188,7 +189,7 @@ public class NetworkManager : MonoBehaviour
     /// Starts hosting a server with the editor specified address, port and password
     /// </summary>
     public void Host()
-        => Host(m_Settings.m_ServerAddress, m_Settings.m_ServerPort, m_Settings.m_ServerPassword);
+        => Host(m_Settings.m_ServerPort, m_Settings.m_ServerPassword);
 
     /// <summary>
     /// Starts hosting a server given a address, port, and password to host it with
@@ -196,13 +197,13 @@ public class NetworkManager : MonoBehaviour
     /// <param name="address">The address the server will be hosting on</param>
     /// <param name="port">The port the server will be hosting on</param>
     /// <param name="password">The password used to connect to the server. Leave blank if no password is required</param>
-    public void Host(string address, int port, string password = "")
+    public void Host(int port, string password = "")
     {
         if (m_Client != null)
             Destroy(m_Client);
 
         m_IsPlaying = true;
-        m_Server.Host(address, port, password);
+        m_Server.Create(port);
     }
 
     public void HostWithProxy(string address, int port, string password = "")
@@ -216,7 +217,7 @@ public class NetworkManager : MonoBehaviour
         m_IsPlaying = true;
         if (m_Server == null)
             m_Server = gameObject.AddComponent<NetworkServer>();
-        m_Server.HostAsProxy(address, port, password);
+        m_Server.Connect("server", address, port);
     }
 
     public void HostMixed(string addr, int port, string pass, bool proxy)
@@ -226,21 +227,21 @@ public class NetworkManager : MonoBehaviour
         {
             if (m_Server == null)
                 m_Server = gameObject.AddComponent<NetworkServer>();
-            m_Server.Host(addr, port, pass);
+            m_Server.Create(port);
 
             if(m_Client == null)
                 m_Client = gameObject.AddComponent<NetworkClient>();
-            m_Client.Connect(addr, port, pass);
+            m_Client.Connect(m_Client.GetUniqueIndentifier(), addr, port);
         }
         else
         {
             if (m_Server == null)
                 m_Server = gameObject.AddComponent<NetworkServer>();
-            m_Server.HostAsProxy(addr, port, pass);
+            m_Server.Connect("server", addr, port);
 
             if (m_Client == null)
                 m_Client = gameObject.AddComponent<NetworkClient>();
-            m_Client.Connect(addr, port, pass);
+            m_Client.Connect(m_Client.GetUniqueIndentifier(), addr, port);
         }
     }
 
@@ -264,7 +265,7 @@ public class NetworkManager : MonoBehaviour
 
         m_Client = gameObject.AddComponent<NetworkClient>();
         m_IsPlaying = true;
-        m_Client.Connect(serverAddress, serverPort, password);
+        m_Client.Connect(m_Client.GetUniqueIndentifier(),serverAddress, serverPort);
     }
 
     public void Clean()

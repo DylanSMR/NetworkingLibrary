@@ -23,10 +23,10 @@ public class NetworkAuthenticationFrame : NetworkFrame
     /// Creates a new NetworkAuthenticationFrame
     /// </summary>
     /// <param name="m_Password">A password used to connect to the game server</param>
-    public NetworkAuthenticationFrame(string m_Password, 
+    public NetworkAuthenticationFrame(string m_Password, string sender, string target,
         NetworkAuthenticationResponse response = NetworkAuthenticationResponse.Unknown,
         string message = "") 
-        : base(NetworkFrameType.Authentication, NetworkClient.Instance.GetUniqueIndentifier())
+        : base(NetworkFrameType.Authentication, sender, target)
     {
         this.m_Password = m_Password;
         this.m_Response = response;

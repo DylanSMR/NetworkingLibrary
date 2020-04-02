@@ -34,7 +34,7 @@ public class NetworkManagerUI : MonoBehaviour
         {
             int port;
             if(int.TryParse(m_StringPort, out port))
-                NetworkManager.Instance.Host(m_Address, port, m_Password);
+                NetworkManager.Instance.Host(port);
         }
 
         if (GUI.Button(new Rect(10, 200, 125, 25), "Host With Proxy"))

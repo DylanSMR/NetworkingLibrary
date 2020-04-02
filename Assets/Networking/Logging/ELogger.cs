@@ -40,7 +40,7 @@ public class ELogger
                 } break;
             case LogType.Normal:
                 {
-                    Debug.Log($"[{Colorizer.Colorize("Normal", Color.black)}][{memberName}:{sourceFilePath}:{fileName}] {message}");
+                    Debug.Log($"[{Colorizer.Colorize("Normal", Color.black)}][{memberName}:{fileName}:{sourceLineNumber}] {message}");
                 }
                 break;
         }

@@ -16,7 +16,7 @@ public class Player : NetworkBehaviour
     private float translation;
     private float straffe;
 
-    private void Start()
+    private void Awake()
     {
         m_Identity = GetComponent<NetworkIdentity>();
         m_Camera = GetComponentInChildren<Camera>();
@@ -48,8 +48,8 @@ public class Player : NetworkBehaviour
     {
         if(m_HasAuthority)
         {
-            GUI.Label(new Rect(100, 100, 100, 100), $"Ping: {NetworkClient.Instance.m_LastPing}ms");
-            GUI.Label(new Rect(100, 120, 100, 100), $"Health: {m_Health}");
+            GUI.Label(new Rect(500, 100, 100, 100), $"Ping: {NetworkClient.Instance.m_LastPing}ms");
+            GUI.Label(new Rect(500, 120, 100, 100), $"Health: {m_Health}");
         }
     }
 

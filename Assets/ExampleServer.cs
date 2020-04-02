@@ -43,19 +43,4 @@ public class ExampleServer : NetworkServer
                 break;
         }
     }
-
-    public override void OnServerStarted(string address, int port)
-    {
-        base.OnServerStarted(address, port);
-    }
-
-    public override void OnServerError(string error)
-    {
-        base.OnServerError(error);
-    }
-
-    public override void OnServerStopped(NetworkServerStopType type, string reason)
-    {
-        base.OnServerStopped(type, reason);
-    }
 }

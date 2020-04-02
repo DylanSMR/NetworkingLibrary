@@ -14,7 +14,7 @@ public class NetworkHandshakeFrame : NetworkFrame
     /// <param name="m_DisplayName">The display name of the local player*</param>
     public NetworkHandshakeFrame(string m_DisplayName) 
         : base(NetworkFrameType.Handshake, 
-            NetworkClient.Instance.GetUniqueIndentifier())
+            NetworkClient.Instance.GetUniqueIndentifier(), "server")
     {
         this.m_DisplayName = m_DisplayName;
     }
